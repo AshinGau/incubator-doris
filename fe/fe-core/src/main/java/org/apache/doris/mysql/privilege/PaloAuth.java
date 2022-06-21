@@ -353,6 +353,30 @@ public class PaloAuth implements Writable {
         return false;
     }
 
+    public boolean checkCtlPriv(ConnectContext ctx, String ctl, PrivPredicate wanted) {
+        return checkCtlPriv(ctx.getCurrentUserIdentity(), ctl, wanted);
+    }
+
+    public boolean checkCtlPriv(UserIdentity currentUser, String ctl, PrivPredicate wanted) {
+        if (!Config.enable_auth_check) {
+            return true;
+        }
+        if (wanted.getPrivs().containsNodePriv()) {
+            LOG.debug("should not check NODE priv in catalog level. user: {}, catalog: {}",
+                    currentUser, ctl);
+            return false;
+        }
+
+        PrivBitSet savedPrivs = PrivBitSet.of();
+        if (checkGlobalInternal(currentUser, wanted, savedPrivs)
+                || checkCatalogInternal(currentUser, ctl, wanted, savedPrivs)) {
+            return true;
+        }
+
+        LOG.debug("failed to get wanted privs: {}, granted: {}", wanted, savedPrivs);
+        return false;
+    }
+
     public boolean checkDbPriv(ConnectContext ctx, String qualifiedDb, PrivPredicate wanted) {
         return checkDbPriv(ctx.getCurrentUserIdentity(), qualifiedDb, wanted);
     }

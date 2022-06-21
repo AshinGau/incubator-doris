@@ -151,6 +151,13 @@ public class DataSourceMgr implements Writable {
     }
 
     /**
+     * Get catalog, or null if not exists.
+     */
+    public DataSourceIf getCatalogNullable(String catalogName) {
+        return nameToCatalogs.get(catalogName);
+    }
+
+    /**
      * List all catalog or get the special catalog with a name.
      */
     public ShowResultSet showCatalogs(ShowCatalogStmt showStmt) throws AnalysisException {
