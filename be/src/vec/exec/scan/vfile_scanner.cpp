@@ -377,6 +377,9 @@ Status VFileScanner::_convert_to_output_block(Block* block) {
         int dest_index = ctx_idx++;
 
         auto* ctx = _dest_vexpr_ctx[dest_index];
+        LOG(WARNING) << "output tuple " << slot_desc->col_name()
+                     << " , type = " << slot_desc->type().debug_string()
+                     << " , dest_index = " << dest_index;
         int result_column_id = -1;
         // PT1 => dest primitive type
         RETURN_IF_ERROR(ctx->execute(&_src_block, &result_column_id));
@@ -543,6 +546,11 @@ Status VFileScanner::_get_next_reader() {
         _name_to_col_type.clear();
         _missing_cols.clear();
         _cur_reader->get_columns(&_name_to_col_type, &_missing_cols);
+        std::stringstream name_to_type_str;
+        for (auto& name_to_type : _name_to_col_type) {
+            name_to_type_str << " (`" << name_to_type.first << "`: " << name_to_type.second.debug_string() << ")";
+        }
+        LOG(WARNING) << range.path << " file schema is " << name_to_type_str.str();
         RETURN_IF_ERROR(_generate_fill_columns());
         if (VLOG_NOTICE_IS_ON && !_missing_cols.empty() && _is_load) {
             fmt::memory_buffer col_buf;

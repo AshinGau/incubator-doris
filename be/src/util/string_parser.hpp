@@ -756,6 +756,12 @@ inline T StringParser::string_to_decimal(const char* s, int len, int type_precis
             } else {
                 divisor = get_scale_multiplier<T>(shift);
             }
+            if (UNLIKELY(divisor == 0)) {
+                std::string parse_string(s, len);
+                LOG(ERROR) << "Divide by zero: parse_string = " << parse_string
+                           << ", length = " << len << ", precision = " << type_precision
+                           << ", scale = " << type_scale;
+            }
             if (LIKELY(divisor >= 0)) {
                 value /= divisor;
                 T remainder = value % divisor;
