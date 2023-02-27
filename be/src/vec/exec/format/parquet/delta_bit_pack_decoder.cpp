@@ -21,9 +21,11 @@ namespace doris::vectorized {
 
 template <typename T>
 Status DeltaBitPackDecoder<T>::_init_header() {
-    if (!_decoder->GetVlqInt(&_values_per_block) || !_decoder->GetVlqInt(&_mini_blocks_per_block) ||
-        !_decoder->GetVlqInt(&_total_value_count) || !_decoder->GetZigZagVlqInt(&_last_value)) {
-        return Status::EndOfFile("Init header eof");
+    if (!_bit_reader->GetUleb128<uint32_t>(&_values_per_block) ||
+        !_bit_reader->GetUleb128<uint32_t>(&_mini_blocks_per_block) ||
+        !_bit_reader->GetUleb128<uint32_t>(&_total_value_count) ||
+        !_bit_reader->GetZigZagInteger(&_last_value)) {
+        return Status::IOError("Init header eof");
     }
     if (_values_per_block == 0) {
         return Status::InvalidArgument("Cannot have zero value per block");
@@ -47,9 +49,6 @@ Status DeltaBitPackDecoder<T>::_init_header() {
     }
     _total_values_remaining = _total_value_count;
     // init as empty property
-    _delta_bit_widths = Slice();
-    _delta_bit_widths.size = _mini_blocks_per_block;
-
     _block_initialized = false;
     _values_remaining_current_mini_block = 0;
     return Status::OK();
@@ -58,15 +57,16 @@ Status DeltaBitPackDecoder<T>::_init_header() {
 template <typename T>
 Status DeltaBitPackDecoder<T>::_init_block() {
     DCHECK_GT(_total_values_remaining, 0) << "InitBlock called at EOF";
-    if (!_decoder->GetZigZagVlqInt(&_min_delta)) {
-        return Status::EndOfFile("Init block eof");
+    if (!_bit_reader->GetZigZagInteger(&_min_delta)) {
+        return Status::IOError("Init block eof");
     }
 
     // read the bitwidth of each miniblock
-    uint8_t* bit_width_data = reinterpret_cast<uint8_t*>(_delta_bit_widths.mutable_data());
+    _delta_bit_widths.resize(_mini_blocks_per_block);
+    uint8_t* bit_width_data = _delta_bit_widths.data();
     for (uint32_t i = 0; i < _mini_blocks_per_block; ++i) {
-        if (!_decoder->GetAligned<uint8_t>(1, bit_width_data + i)) {
-            return Status::EndOfFile("Decode bit-width EOF");
+        if (!_bit_reader->GetBytes<uint8_t>(1, bit_width_data + i)) {
+            return Status::IOError("Decode bit-width EOF");
         }
         // Note that non-conformant bitwidth entries are allowed by the Parquet spec
         // for extraneous miniblocks in the last block (GH-14923), so we check
@@ -89,13 +89,12 @@ Status DeltaBitPackDecoder<T>::_init_mini_block(int bit_width) {
 }
 
 template <typename T>
-Status DeltaBitPackDecoder<T>::_get_internal(T* buffer, int num_values, int* out) {
+Status DeltaBitPackDecoder<T>::_get_internal(T* buffer, int num_values, int* out_num_values) {
     num_values = static_cast<int>(std::min<int64_t>(num_values, _total_values_remaining));
     if (num_values == 0) {
-        *out = 0;
+        *out_num_values = 0;
         return Status::OK();
     }
-
     int i = 0;
     while (i < num_values) {
         if (_values_remaining_current_mini_block == 0) {
@@ -119,7 +118,7 @@ Status DeltaBitPackDecoder<T>::_get_internal(T* buffer, int num_values, int* out
             } else {
                 ++_mini_block_idx;
                 if (_mini_block_idx < _mini_blocks_per_block) {
-                    RETURN_IF_ERROR(_init_mini_block(_delta_bit_widths.data[_mini_block_idx]));
+                    RETURN_IF_ERROR(_init_mini_block(_delta_bit_widths.data()[_mini_block_idx]));
                 } else {
                     RETURN_IF_ERROR(_init_block());
                 }
@@ -128,10 +127,9 @@ Status DeltaBitPackDecoder<T>::_get_internal(T* buffer, int num_values, int* out
 
         int values_decode = std::min(_values_remaining_current_mini_block,
                                      static_cast<uint32_t>(num_values - i));
-        for (int j = 0; j < values_decode; ++j) {
-            if (!_decoder->GetValue(_delta_bit_width, buffer + i + j)) {
-                return Status::EndOfFile("get batch EOF");
-            }
+        if (!_bit_reader->UnpackBatch(_delta_bit_width, values_decode,
+                                      reinterpret_cast<UT*>(buffer + i))) {
+            return Status::IOError("Get batch EOF");
         }
         for (int j = 0; j < values_decode; ++j) {
             // Addition between min_delta, packed int and last_value should be treated as
@@ -146,14 +144,123 @@ Status DeltaBitPackDecoder<T>::_get_internal(T* buffer, int num_values, int* out
     _total_values_remaining -= num_values;
 
     if (_total_values_remaining == 0) {
-        uint32_t padding_bits = _values_remaining_current_mini_block * _delta_bit_width;
-        // skip the padding bits
-        if (!_decoder->Advance(padding_bits)) {
-            return Status::EndOfFile("Skip padding_bits EOF");
-        }
+        // TODO: The Slice to be decoded will not reuse so don't need skip the padding bits,
+        // but we can also skip them for the robustness.
         _values_remaining_current_mini_block = 0;
     }
-    *out = num_values;
+    *out_num_values = num_values;
+    return Status::OK();
+}
+
+void DeltaLengthByteArrayDecoder::_decode_lengths() {
+    _len_decoder.set_bit_reader(_bit_reader);
+    // get the number of encoded lengths
+    int num_length = _len_decoder.valid_values_count();
+    _buffered_length.resize(num_length * sizeof(int32_t));
+
+    // decode all the lengths. all the lengths are buffered in buffered_length_.
+    int ret;
+    _len_decoder.decode(reinterpret_cast<int32_t*>(_buffered_length.data()), num_length, &ret);
+    DCHECK_EQ(ret, num_length);
+    _length_idx = 0;
+    _num_valid_values = num_length;
+}
+
+Status DeltaLengthByteArrayDecoder::_get_internal(Slice* buffer, int max_values,
+                                                  int* out_num_values) {
+    // Decode up to `max_values` strings into an internal buffer
+    // and reference them into `buffer`.
+    max_values = std::min(max_values, _num_valid_values);
+    if (max_values == 0) {
+        *out_num_values = 0;
+        return Status::OK();
+    }
+
+    int32_t data_size = 0;
+    const int32_t* length_ptr =
+            reinterpret_cast<const int32_t*>(_buffered_length.data()) + _length_idx;
+    for (int i = 0; i < max_values; ++i) {
+        int32_t len = length_ptr[i];
+        if (PREDICT_FALSE(len < 0)) {
+            return Status::EndOfFile("Negative string delta length");
+        }
+        buffer[i].size = len;
+        if (common::add_overflow(data_size, len, data_size)) {
+            return Status::InvalidArgument("Excess expansion in DELTA_(LENGTH_)BYTE_ARRAY");
+        }
+    }
+    _length_idx += max_values;
+
+    _buffered_data.resize(data_size);
+    if (!_bit_reader->UnpackBatch(8, data_size, _buffered_data.data())) {
+        return Status::IOError("Get length bytes EOF");
+    }
+    uint8_t* data_ptr = _buffered_data.data();
+
+    for (int i = 0; i < max_values; ++i) {
+        buffer[i].data = reinterpret_cast<char*>(data_ptr);
+        data_ptr += buffer[i].size;
+    }
+    // this->num_values_ -= max_values;
+    _num_valid_values -= max_values;
+    *out_num_values = max_values;
+    return Status::OK();
+}
+
+Status DeltaByteArrayDecoder::_get_internal(Slice* buffer, int max_values, int* out_num_values) {
+    // Decode up to `max_values` strings into an internal buffer
+    // and reference them into `buffer`.
+    max_values = std::min(max_values, _num_valid_values);
+    if (max_values == 0) {
+        *out_num_values = max_values;
+        return Status::OK();
+    }
+
+    int suffix_read;
+    RETURN_IF_ERROR(_suffix_decoder.decode(buffer, max_values, &suffix_read));
+    if (PREDICT_FALSE(suffix_read != max_values)) {
+        return Status::EndOfFile("Read " + std::to_string(suffix_read) + ", expecting " +
+                                 std::to_string(max_values) + " from suffix decoder");
+    }
+
+    int64_t data_size = 0;
+    const int32_t* prefix_len_ptr =
+            reinterpret_cast<const int32_t*>(_buffered_prefix_length.data()) + _prefix_len_offset;
+    for (int i = 0; i < max_values; ++i) {
+        if (PREDICT_FALSE(prefix_len_ptr[i] < 0)) {
+            return Status::InvalidArgument("negative prefix length in DELTA_BYTE_ARRAY");
+        }
+        if (PREDICT_FALSE(common::add_overflow(data_size, static_cast<int64_t>(prefix_len_ptr[i]),
+                                               data_size) ||
+                          common::add_overflow(data_size, static_cast<int64_t>(buffer[i].size),
+                                               data_size))) {
+            return Status::InvalidArgument("excess expansion in DELTA_BYTE_ARRAY");
+        }
+    }
+    _buffered_data.resize(data_size);
+
+    std::string_view prefix {_last_value};
+    uint8_t* data_ptr = _buffered_data.data();
+    for (int i = 0; i < max_values; ++i) {
+        if (PREDICT_FALSE(static_cast<size_t>(prefix_len_ptr[i]) > prefix.length())) {
+            return Status::InvalidArgument("prefix length too large in DELTA_BYTE_ARRAY");
+        }
+        memcpy(data_ptr, prefix.data(), prefix_len_ptr[i]);
+        // buffer[i] currently points to the string suffix
+        memcpy(data_ptr + prefix_len_ptr[i], buffer[i].data, buffer[i].size);
+        buffer[i].data = reinterpret_cast<char*>(data_ptr);
+        buffer[i].size += prefix_len_ptr[i];
+        data_ptr += buffer[i].size;
+        prefix = std::string_view {reinterpret_cast<const char*>(buffer[i].data), buffer[i].size};
+    }
+    _prefix_len_offset += max_values;
+    _num_valid_values -= max_values;
+    _last_value = std::string {prefix};
+
+    if (_num_valid_values == 0) {
+        _last_value_in_previous_page = _last_value;
+    }
+    *out_num_values = max_values;
     return Status::OK();
 }
 } // namespace doris::vectorized

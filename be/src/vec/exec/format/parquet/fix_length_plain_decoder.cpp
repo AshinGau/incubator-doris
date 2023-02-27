@@ -109,7 +109,11 @@ Status FixLengthPlainDecoder::decode_values(MutableColumnPtr& doris_column, Data
         }
         break;
     case TypeIndex::String:
-        [[fallthrough]];
+        if (_physical_type == tparquet::Type::FIXED_LEN_BYTE_ARRAY ||
+            _physical_type == tparquet::Type::BYTE_ARRAY) {
+            return _decode_string(doris_column, select_vector);
+        }
+        break;
     case TypeIndex::FixedString:
         if (_physical_type == tparquet::Type::FIXED_LEN_BYTE_ARRAY) {
             return _decode_string(doris_column, select_vector);
