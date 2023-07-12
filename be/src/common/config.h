@@ -973,6 +973,7 @@ DECLARE_mInt16(pipeline_short_query_timeout_s);
 // Will remove after fully test.
 DECLARE_Bool(enable_index_apply_preds_except_leafnode_of_andnode);
 
+DECLARE_Bool(disable_all_caches);
 // block file cache
 DECLARE_Bool(enable_file_cache);
 // format: [{"path":"/path/to/file_cache","total_size":21474836480,"query_limit":10737418240}]

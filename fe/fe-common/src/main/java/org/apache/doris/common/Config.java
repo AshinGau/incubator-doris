@@ -1728,6 +1728,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = false, masterOnly = false)
     public static long external_cache_expire_time_minutes_after_access = 24 * 60; // 1 day
 
+    @ConfField(mutable = false, masterOnly = false)
+    public static boolean disable_all_caches = false;
+
     /**
      * Github workflow test type, for setting some session variables
      * only for certain test type. E.g. only settting batch_size to small

@@ -51,7 +51,7 @@ static std::string RANDOM_CACHE_BASE_PATH = "random";
 
 io::FileReaderOptions FileFactory::get_reader_options(RuntimeState* state) {
     io::FileCachePolicy cache_policy = io::FileCachePolicy::NO_CACHE;
-    if (config::enable_file_cache && state != nullptr &&
+    if (!config::disable_all_caches && config::enable_file_cache && state != nullptr &&
         state->query_options().__isset.enable_file_cache &&
         state->query_options().enable_file_cache) {
         cache_policy = io::FileCachePolicy::FILE_BLOCK_CACHE;

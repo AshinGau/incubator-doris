@@ -390,7 +390,11 @@ public class HiveMetaStoreCache {
 
     public HivePartitionValues getPartitionValues(PartitionValueCacheKey key) {
         try {
-            return partitionValuesCache.get(key);
+            if (Config.disable_all_caches) {
+                return loadPartitionValues(key);
+            } else {
+                return partitionValuesCache.get(key);
+            }
         } catch (ExecutionException e) {
             throw new CacheException("failed to get partition values for %s in catalog %s", e, key, catalog.getName());
         }
@@ -416,7 +420,12 @@ public class HiveMetaStoreCache {
         }
         List<FileCacheValue> fileLists = stream.map(k -> {
             try {
-                FileCacheValue fileCacheValue = fileCacheRef.get().get(k);
+                FileCacheValue fileCacheValue;
+                if (Config.disable_all_caches) {
+                    fileCacheValue = loadFiles(k);
+                } else {
+                    fileCacheValue = fileCacheRef.get().get(k);
+                }
                 // Replace default hive partition with a null_string.
                 for (int i = 0; i < fileCacheValue.getValuesSize(); i++) {
                     if (HIVE_DEFAULT_PARTITION.equals(fileCacheValue.getPartitionValues().get(i))) {
@@ -448,7 +457,11 @@ public class HiveMetaStoreCache {
         }
         List<HivePartition> partitions = stream.map(k -> {
             try {
-                return partitionCache.get(k);
+                if (Config.disable_all_caches) {
+                    return loadPartitions(k);
+                } else {
+                    return partitionCache.get(k);
+                }
             } catch (ExecutionException e) {
                 throw new CacheException("failed to get partition for %s in catalog %s", e, k, catalog.getName());
             }

@@ -225,7 +225,7 @@ Status ParquetReader::_open_file() {
             return Status::EndOfFile("open file failed, empty parquet file: " + _scan_range.path);
         }
         size_t meta_size = 0;
-        if (_meta_cache == nullptr) {
+        if (_meta_cache == nullptr || config::disable_all_caches) {
             _is_file_metadata_owned = true;
             RETURN_IF_ERROR(
                     parse_thrift_footer(_file_reader, &_file_metadata, &meta_size, _io_ctx));
