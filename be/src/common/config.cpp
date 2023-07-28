@@ -1050,6 +1050,8 @@ DEFINE_mInt64(lookup_connection_cache_bytes_limit, "4294967296");
 
 // level of compression when using LZ4_HC, whose defalut value is LZ4HC_CLEVEL_DEFAULT
 DEFINE_mInt64(LZ4_HC_compression_level, "9");
+// The secure path with user files, used in the `local` table function.
+DEFINE_mString(user_files_secure_path, "${DORIS_HOME}");
 
 #ifdef BE_TEST
 // test s3
