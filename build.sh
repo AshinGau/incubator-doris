@@ -667,7 +667,8 @@ EOF
         cp -r -p "${DORIS_HOME}/bin/run-fs-benchmark.sh" "${DORIS_OUTPUT}/be/bin/"/
     fi
 
-    extensions_modules=("java-udf")
+    extensions_modules=("")
+    extensions_modules+=("java-udf")
     extensions_modules+=("jdbc-scanner")
     extensions_modules+=("hudi-scanner")
     extensions_modules+=("paimon-scanner")
@@ -679,9 +680,8 @@ EOF
     mkdir "${BE_JAVA_EXTENSIONS_DIR}"
     for extensions_module in "${extensions_modules[@]}"; do
         module_path="${DORIS_HOME}/fe/be-java-extensions/${extensions_module}/target/${extensions_module}-jar-with-dependencies.jar"
-        mkdir "${BE_JAVA_EXTENSIONS_DIR}"/"${extensions_module}"
         if [[ -f "${module_path}" ]]; then
-            cp "${module_path}" "${BE_JAVA_EXTENSIONS_DIR}"/"${extensions_module}"
+            cp "${module_path}" "${BE_JAVA_EXTENSIONS_DIR}"/
         fi
     done
 
