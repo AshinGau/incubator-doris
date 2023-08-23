@@ -17,11 +17,12 @@
 
 package org.apache.doris.hudi;
 
-
 import org.apache.doris.common.jni.JniScanner;
 import org.apache.doris.common.jni.vec.ColumnType;
 import org.apache.doris.common.jni.vec.ScanPredicate;
 
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.util.WeakIdentityHashMap;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -30,6 +31,7 @@ import scala.collection.Iterator;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.List;
@@ -55,6 +57,21 @@ public class HudiJniScanner extends JniScanner {
 
     private long getRecordReaderTimeNs = 0;
     private Iterator<InternalRow> recordIterator;
+
+    private static ThreadLocal<WeakIdentityHashMap<?, ?>> AVRO_RESOLVER_CACHE;
+
+    static {
+        Class<?> avroReader = GenericDatumReader.class;
+        try {
+            Field field = avroReader.getDeclaredField("RESOLVER_CACHE");
+            field.setAccessible(true);
+            AVRO_RESOLVER_CACHE = (ThreadLocal<WeakIdentityHashMap<?, ?>>) field.get(null);
+            LOG.info("Get the resolved cache for avro reader");
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            AVRO_RESOLVER_CACHE = null;
+            LOG.warn("Failed to get the resolved cache for avro reader");
+        }
+    }
 
     public HudiJniScanner(int fetchSize, Map<String, String> params) {
         debugString = params.entrySet().stream().map(kv -> kv.getKey() + "=" + kv.getValue())
@@ -128,6 +145,12 @@ public class HudiJniScanner extends JniScanner {
 
     @Override
     public void close() throws IOException {
+        if (AVRO_RESOLVER_CACHE != null) {
+            WeakIdentityHashMap<?, ?> cache = AVRO_RESOLVER_CACHE.get();
+            if (cache != null) {
+                cache.clear();
+            }
+        }
         if (recordIterator instanceof Closeable) {
             ((Closeable) recordIterator).close();
         }
