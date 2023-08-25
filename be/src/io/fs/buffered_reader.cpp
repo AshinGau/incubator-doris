@@ -779,7 +779,11 @@ Status DelegateReader::create_file_reader(RuntimeProfile* profile,
     RETURN_IF_ERROR(FileFactory::create_file_reader(system_properties, file_description,
                                                     reader_options, file_system, &reader, profile));
     if (reader->size() < IN_MEMORY_FILE_SIZE) {
-        *file_reader = std::make_shared<InMemoryFileReader>(reader);
+        if (typeid_cast<io::S3FileReader*>(reader.get())) {
+            *file_reader = std::make_shared<InMemoryFileReader>(reader);
+        } else {
+            *file_reader = std::move(reader);
+        }
     } else if (access_mode == AccessMode::SEQUENTIAL) {
         bool is_thread_safe = false;
         if (typeid_cast<io::S3FileReader*>(reader.get())) {
