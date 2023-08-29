@@ -34,7 +34,9 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,6 +57,9 @@ public class HudiJniScanner extends JniScanner {
 
     private long getRecordReaderTimeNs = 0;
     private Iterator<InternalRow> recordIterator;
+
+    public static ExecutorService avroReadPool = Executors.newFixedThreadPool(
+            Math.max(Runtime.getRuntime().availableProcessors(), 4));
 
     public HudiJniScanner(int fetchSize, Map<String, String> params) {
         debugString = params.entrySet().stream().map(kv -> kv.getKey() + "=" + kv.getValue())
@@ -84,46 +89,53 @@ public class HudiJniScanner extends JniScanner {
 
     @Override
     public void open() throws IOException {
-        Thread.currentThread().setContextClassLoader(classLoader);
-        initTableInfo(split.requiredTypes(), split.requiredFields(), predicates, fetchSize);
-        long startTime = System.nanoTime();
-        // RecordReader will use ProcessBuilder to start a hotspot process, which may be stuck,
-        // so use another process to kill this stuck process.
-        // TODO(gaoxin): better way to solve the stuck process?
-        AtomicBoolean isKilled = new AtomicBoolean(false);
-        ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
-        executorService.scheduleAtFixedRate(() -> {
-            if (!isKilled.get()) {
-                synchronized (HudiJniScanner.class) {
-                    List<Long> pids = Utils.getChildProcessIds(
-                            Utils.getCurrentProcId());
-                    for (long pid : pids) {
-                        String cmd = Utils.getCommandLine(pid);
-                        if (cmd != null && cmd.contains("org.openjdk.jol.vm.sa.AttachMain")) {
-                            Utils.killProcess(pid);
-                            isKilled.set(true);
-                            LOG.info("Kill hotspot debugger process " + pid);
+        Future<?> avroFuture = avroReadPool.submit(() -> {
+            Thread.currentThread().setContextClassLoader(classLoader);
+            initTableInfo(split.requiredTypes(), split.requiredFields(), predicates, fetchSize);
+            long startTime = System.nanoTime();
+            // RecordReader will use ProcessBuilder to start a hotspot process, which may be stuck,
+            // so use another process to kill this stuck process.
+            // TODO(gaoxin): better way to solve the stuck process?
+            AtomicBoolean isKilled = new AtomicBoolean(false);
+            ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
+            executorService.scheduleAtFixedRate(() -> {
+                if (!isKilled.get()) {
+                    synchronized (HudiJniScanner.class) {
+                        List<Long> pids = Utils.getChildProcessIds(
+                                Utils.getCurrentProcId());
+                        for (long pid : pids) {
+                            String cmd = Utils.getCommandLine(pid);
+                            if (cmd != null && cmd.contains("org.openjdk.jol.vm.sa.AttachMain")) {
+                                Utils.killProcess(pid);
+                                isKilled.set(true);
+                                LOG.info("Kill hotspot debugger process " + pid);
+                            }
                         }
                     }
                 }
+            }, 100, 1000, TimeUnit.MILLISECONDS);
+            try {
+                if (ugi != null) {
+                    recordIterator = ugi.doAs(
+                            (PrivilegedExceptionAction<Iterator<InternalRow>>) () -> new MORSnapshotSplitReader(
+                                    split).buildScanIterator(split.requiredFields(), new Filter[0]));
+                } else {
+                    recordIterator = new MORSnapshotSplitReader(split)
+                            .buildScanIterator(split.requiredFields(), new Filter[0]);
+                }
+            } catch (Exception e) {
+                LOG.error("Failed to open hudi scanner, split params:\n" + debugString, e);
+                throw new RuntimeException(e.getMessage(), e);
             }
-        }, 100, 1000, TimeUnit.MILLISECONDS);
+            isKilled.set(true);
+            executorService.shutdownNow();
+            getRecordReaderTimeNs += System.nanoTime() - startTime;
+        });
         try {
-            if (ugi != null) {
-                recordIterator = ugi.doAs(
-                        (PrivilegedExceptionAction<Iterator<InternalRow>>) () -> new MORSnapshotSplitReader(
-                                split).buildScanIterator(split.requiredFields(), new Filter[0]));
-            } else {
-                recordIterator = new MORSnapshotSplitReader(split)
-                        .buildScanIterator(split.requiredFields(), new Filter[0]);
-            }
+            avroFuture.get();
         } catch (Exception e) {
-            LOG.error("Failed to open hudi scanner, split params:\n" + debugString, e);
             throw new IOException(e.getMessage(), e);
         }
-        isKilled.set(true);
-        executorService.shutdownNow();
-        getRecordReaderTimeNs += System.nanoTime() - startTime;
     }
 
     @Override
