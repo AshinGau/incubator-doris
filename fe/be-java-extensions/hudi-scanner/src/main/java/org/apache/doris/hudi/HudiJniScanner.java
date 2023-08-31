@@ -89,11 +89,13 @@ public class HudiJniScanner extends JniScanner {
         }
 
         cleanResolverService.scheduleAtFixedRate(() -> {
+            LOG.warn("Start GC, avro readers : " + cachedResolvers.size());
             System.gc();
             cleanResolverLock.writeLock().lock();
+            LOG.warn("Start reap...");
             try {
                 for (Map.Entry<Long, WeakIdentityHashMap<?, ?>> solver : cachedResolvers.entrySet()) {
-                    LOG.info("Avro reader of thread " + solver.getKey() + " cached " + solver.getValue().size()
+                    LOG.warn("Avro reader of thread " + solver.getKey() + " cached " + solver.getValue().size()
                             + " resolves after full GC.");
                 }
             } finally {
@@ -132,9 +134,6 @@ public class HudiJniScanner extends JniScanner {
     public void open() throws IOException {
         Future<?> avroFuture = avroReadPool.submit(() -> {
             Thread.currentThread().setContextClassLoader(classLoader);
-            if (AVRO_RESOLVER_CACHE != null) {
-                cachedResolvers.computeIfAbsent(Thread.currentThread().getId(), threadId -> AVRO_RESOLVER_CACHE.get());
-            }
             initTableInfo(split.requiredTypes(), split.requiredFields(), predicates, fetchSize);
             long startTime = System.nanoTime();
             // RecordReader will use ProcessBuilder to start a hotspot process, which may be stuck,
@@ -177,6 +176,12 @@ public class HudiJniScanner extends JniScanner {
             }
             isKilled.set(true);
             executorService.shutdownNow();
+            if (AVRO_RESOLVER_CACHE != null && AVRO_RESOLVER_CACHE.get() != null) {
+                cachedResolvers.computeIfAbsent(Thread.currentThread().getId(),
+                        threadId -> AVRO_RESOLVER_CACHE.get());
+                LOG.warn("Thread " + Thread.currentThread().getId() + " has resolvers: " + AVRO_RESOLVER_CACHE.get()
+                        .size());
+            }
             getRecordReaderTimeNs += System.nanoTime() - startTime;
         });
         try {
