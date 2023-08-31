@@ -22,6 +22,9 @@ import org.apache.doris.common.jni.JniScanner;
 import org.apache.doris.common.jni.vec.ColumnType;
 import org.apache.doris.common.jni.vec.ScanPredicate;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.util.WeakIdentityHashMap;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -30,16 +33,20 @@ import scala.collection.Iterator;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
@@ -58,8 +65,42 @@ public class HudiJniScanner extends JniScanner {
     private long getRecordReaderTimeNs = 0;
     private Iterator<InternalRow> recordIterator;
 
-    public static ExecutorService avroReadPool = Executors.newFixedThreadPool(
-            Math.max(Runtime.getRuntime().availableProcessors(), 4));
+    private static final ExecutorService avroReadPool;
+    private static ThreadLocal<WeakIdentityHashMap<?, ?>> AVRO_RESOLVER_CACHE;
+    private static final Map<Long, WeakIdentityHashMap<?, ?>> cachedResolvers = new ConcurrentHashMap<>();
+    private static final ReadWriteLock cleanResolverLock = new ReentrantReadWriteLock();
+    private static final ScheduledExecutorService cleanResolverService = Executors.newScheduledThreadPool(1);
+
+    static {
+        int numThreads = Math.max(Runtime.getRuntime().availableProcessors() * 2 + 1, 4);
+        avroReadPool = Executors.newFixedThreadPool(numThreads,
+                new ThreadFactoryBuilder().setNameFormat("avro-log-reader-%d").build());
+        LOG.info("Create " + numThreads + " daemon threads to load avro logs");
+
+        Class<?> avroReader = GenericDatumReader.class;
+        try {
+            Field field = avroReader.getDeclaredField("RESOLVER_CACHE");
+            field.setAccessible(true);
+            AVRO_RESOLVER_CACHE = (ThreadLocal<WeakIdentityHashMap<?, ?>>) field.get(null);
+            LOG.info("Get the resolved cache for avro reader");
+        } catch (Exception e) {
+            AVRO_RESOLVER_CACHE = null;
+            LOG.warn("Failed to get the resolved cache for avro reader");
+        }
+
+        cleanResolverService.scheduleAtFixedRate(() -> {
+            System.gc();
+            cleanResolverLock.writeLock().lock();
+            try {
+                for (Map.Entry<Long, WeakIdentityHashMap<?, ?>> solver : cachedResolvers.entrySet()) {
+                    LOG.info("Avro reader of thread " + solver.getKey() + " cached " + solver.getValue().size()
+                            + " resolves after full GC.");
+                }
+            } finally {
+                cleanResolverLock.writeLock().unlock();
+            }
+        }, 30, 30, TimeUnit.SECONDS);
+    }
 
     public HudiJniScanner(int fetchSize, Map<String, String> params) {
         debugString = params.entrySet().stream().map(kv -> kv.getKey() + "=" + kv.getValue())
@@ -91,6 +132,9 @@ public class HudiJniScanner extends JniScanner {
     public void open() throws IOException {
         Future<?> avroFuture = avroReadPool.submit(() -> {
             Thread.currentThread().setContextClassLoader(classLoader);
+            if (AVRO_RESOLVER_CACHE != null) {
+                cachedResolvers.computeIfAbsent(Thread.currentThread().getId(), threadId -> AVRO_RESOLVER_CACHE.get());
+            }
             initTableInfo(split.requiredTypes(), split.requiredFields(), predicates, fetchSize);
             long startTime = System.nanoTime();
             // RecordReader will use ProcessBuilder to start a hotspot process, which may be stuck,
@@ -114,6 +158,8 @@ public class HudiJniScanner extends JniScanner {
                     }
                 }
             }, 100, 1000, TimeUnit.MILLISECONDS);
+
+            cleanResolverLock.readLock().lock();
             try {
                 if (ugi != null) {
                     recordIterator = ugi.doAs(
@@ -126,6 +172,8 @@ public class HudiJniScanner extends JniScanner {
             } catch (Exception e) {
                 LOG.error("Failed to open hudi scanner, split params:\n" + debugString, e);
                 throw new RuntimeException(e.getMessage(), e);
+            } finally {
+                cleanResolverLock.readLock().unlock();
             }
             isKilled.set(true);
             executorService.shutdownNow();
@@ -143,6 +191,7 @@ public class HudiJniScanner extends JniScanner {
         if (recordIterator instanceof Closeable) {
             ((Closeable) recordIterator).close();
         }
+        recordIterator = null;
     }
 
     @Override
