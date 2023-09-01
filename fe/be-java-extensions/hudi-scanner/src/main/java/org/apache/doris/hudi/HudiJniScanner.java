@@ -33,7 +33,6 @@ import scala.collection.Iterator;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.Field;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
@@ -46,6 +45,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -66,6 +66,18 @@ public class HudiJniScanner extends JniScanner {
     private long getRecordReaderTimeNs = 0;
     private Iterator<InternalRow> recordIterator;
 
+    /**
+     * `GenericDatumReader` of avro is a thread local map, that stores `WeakIdentityHashMap`.
+     * `WeakIdentityHashMap` has cached the avro resolving decoder, and the cached resolver can only be cleaned when
+     * its avro schema is recycled and become a week reference. However, the behavior of the week reference queue
+     * of `WeakIdentityHashMap` is unpredictable. Secondly, the decoder is very memory intensive, the number of threads
+     * to call the thread local map cannot be too many.
+     * Two solutions:
+     * 1. Reduce the number of threads reading avro logs and keep the readers in a fixed thread pool.
+     * 2. Regularly cleaning the cached resolvers in the thread local map by reflection.
+     */
+    private static final AtomicLong lastUpdateTime = new AtomicLong(System.currentTimeMillis());
+    private static final long RESOLVER_TIME_OUT = 60000;
     private static final ExecutorService avroReadPool;
     private static ThreadLocal<WeakIdentityHashMap<?, ?>> AVRO_RESOLVER_CACHE;
     private static final Map<Long, WeakIdentityHashMap<?, ?>> cachedResolvers = new ConcurrentHashMap<>();
@@ -90,28 +102,18 @@ public class HudiJniScanner extends JniScanner {
         }
 
         cleanResolverService.scheduleAtFixedRate(() -> {
-            LOG.warn("Start GC, avro readers : " + cachedResolvers.size());
-            System.gc();
             cleanResolverLock.writeLock().lock();
-            LOG.warn("Start reap...");
             try {
-                for (Map.Entry<Long, WeakIdentityHashMap<?, ?>> solver : cachedResolvers.entrySet()) {
-                    LOG.warn("Avro reader of thread " + solver.getKey() + " cached " + solver.getValue().size()
-                            + " resolves after full GC.");
-                    Field weakQueue = solver.getValue().getClass().getDeclaredField("queue");
-                    weakQueue.setAccessible(true);
-                    ReferenceQueue<?> queue = (ReferenceQueue<?>) weakQueue.get(solver.getValue());
-                    Field queueLength = queue.getClass().getDeclaredField("queueLength");
-                    queueLength.setAccessible(true);
-                    long length = (Long) queueLength.get(queue);
-                    LOG.warn("Avro reader of thread " + solver.getKey() + " weak queue size: " + length);
+                if (System.currentTimeMillis() - lastUpdateTime.get() > RESOLVER_TIME_OUT) {
+                    for (WeakIdentityHashMap<?, ?> solver : cachedResolvers.values()) {
+                        solver.clear();
+                    }
+                    lastUpdateTime.set(System.currentTimeMillis());
                 }
-            } catch (Exception e) {
-                LOG.warn("Failed to clean avro reader", e);
             } finally {
                 cleanResolverLock.writeLock().unlock();
             }
-        }, 30, 30, TimeUnit.SECONDS);
+        }, RESOLVER_TIME_OUT, RESOLVER_TIME_OUT, TimeUnit.MILLISECONDS);
     }
 
     public HudiJniScanner(int fetchSize, Map<String, String> params) {
@@ -170,6 +172,7 @@ public class HudiJniScanner extends JniScanner {
 
             cleanResolverLock.readLock().lock();
             try {
+                lastUpdateTime.set(System.currentTimeMillis());
                 if (ugi != null) {
                     recordIterator = ugi.doAs(
                             (PrivilegedExceptionAction<Iterator<InternalRow>>) () -> new MORSnapshotSplitReader(
@@ -189,8 +192,6 @@ public class HudiJniScanner extends JniScanner {
             if (AVRO_RESOLVER_CACHE != null && AVRO_RESOLVER_CACHE.get() != null) {
                 cachedResolvers.computeIfAbsent(Thread.currentThread().getId(),
                         threadId -> AVRO_RESOLVER_CACHE.get());
-                LOG.warn("Thread " + Thread.currentThread().getId() + " has resolvers: " + AVRO_RESOLVER_CACHE.get()
-                        .size());
             }
             getRecordReaderTimeNs += System.nanoTime() - startTime;
         });
