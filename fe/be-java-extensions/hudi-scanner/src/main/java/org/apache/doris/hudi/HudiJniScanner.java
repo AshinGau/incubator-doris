@@ -33,6 +33,7 @@ import scala.collection.Iterator;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.Field;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
@@ -97,7 +98,16 @@ public class HudiJniScanner extends JniScanner {
                 for (Map.Entry<Long, WeakIdentityHashMap<?, ?>> solver : cachedResolvers.entrySet()) {
                     LOG.warn("Avro reader of thread " + solver.getKey() + " cached " + solver.getValue().size()
                             + " resolves after full GC.");
+                    Field weakQueue = solver.getValue().getClass().getDeclaredField("queue");
+                    weakQueue.setAccessible(true);
+                    ReferenceQueue<?> queue = (ReferenceQueue<?>) weakQueue.get(solver.getValue());
+                    Field queueLength = queue.getClass().getDeclaredField("queueLength");
+                    queueLength.setAccessible(true);
+                    long length = (Long) queueLength.get(queue);
+                    LOG.warn("Avro reader of thread " + solver.getKey() + " weak queue size: " + length);
                 }
+            } catch (Exception e) {
+                LOG.warn("Failed to clean avro reader", e);
             } finally {
                 cleanResolverLock.writeLock().unlock();
             }
