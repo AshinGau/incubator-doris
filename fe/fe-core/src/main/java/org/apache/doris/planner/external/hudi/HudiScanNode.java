@@ -312,7 +312,8 @@ public class HudiScanNode extends HiveScanNode {
                         noLogsSplitNum.incrementAndGet();
                     }
 
-                    HudiSplit split = new HudiSplit(new Path(filePath), 0, fileSize, fileSize,
+                    String agencyPath = filePath.isEmpty() ? logs.get(0) : filePath;
+                    HudiSplit split = new HudiSplit(new Path(agencyPath), 0, fileSize, fileSize,
                             new String[0], partition.getPartitionValues());
                     split.setTableFormatType(TableFormatType.HUDI);
                     split.setDataFilePath(filePath);
