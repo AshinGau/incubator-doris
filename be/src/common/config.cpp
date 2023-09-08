@@ -883,6 +883,7 @@ DEFINE_Validator(file_cache_type, [](const std::string config) -> bool {
            config == "file_block_cache";
 });
 DEFINE_mInt64(file_cache_max_size_per_disk, "0"); // zero for no limit
+DEFINE_mInt32(file_cache_wait_sec_after_fail, "0"); // // zero for no waiting and retrying
 
 DEFINE_Int32(s3_transfer_executor_pool_size, "2");
 

@@ -926,6 +926,8 @@ DECLARE_mInt64(file_cache_alive_time_sec); // 1 week
 // "whole_file_cache": the whole file.
 DECLARE_mString(file_cache_type);
 DECLARE_mInt64(file_cache_max_size_per_disk); // zero for no limit
+// only for debug, will be removed after finding out the root cause
+DECLARE_mInt32(file_cache_wait_sec_after_fail); // zero for no waiting and retrying
 
 DECLARE_Int32(s3_transfer_executor_pool_size);
 

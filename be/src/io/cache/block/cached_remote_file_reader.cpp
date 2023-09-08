@@ -91,6 +91,7 @@ std::pair<size_t, size_t> CachedRemoteFileReader::_align_size(size_t offset,
 
 Status CachedRemoteFileReader::_read_from_cache(size_t offset, Slice result, size_t* bytes_read,
                                                 const IOContext* io_ctx) {
+    size_t bytes_req = result.size;
     ReadStatistics stats;
     auto [align_left, align_size] = _align_size(offset, bytes_req);
     CacheContext cache_context(io_ctx);
@@ -227,10 +228,29 @@ Status CachedRemoteFileReader::read_at_impl(size_t offset, Slice result, size_t*
         return Status::OK();
     }
     Status cache_st = _read_from_cache(offset, result, bytes_read, io_ctx);
-    if (!cache_st.ok() || offset % 5 == 0) {
-        LOG(WARNING) << "Failed to read data from file cache, and fail over to remote file: "
-                     << cache_st.to_string();
-        return _remote_file_reader->read_at(offset, result, bytes_read, io_ctx);
+    if (UNLIKELY(!cache_st.ok() && config::file_cache_wait_sec_after_fail > 0)) {
+        LOG(WARNING) << "Failed to read data from file cache, and wait "
+                     << config::file_cache_wait_sec_after_fail
+                     << " seconds: " << cache_st.to_string();
+        sleep(config::file_cache_wait_sec_after_fail);
+        LOG(WARNING) << "Retry to load data from file cache";
+        cache_st = _read_from_cache(offset, result, bytes_read, io_ctx);
+    }
+    if (UNLIKELY(!cache_st.ok())) {
+        if (config::file_cache_wait_sec_after_fail > 0) {
+            // only for debug, wait and retry to load data from file cache
+            // return error if failed again
+            LOG(WARNING) << "Failed to read data from file cache, and wait "
+                         << config::file_cache_wait_sec_after_fail
+                         << " seconds to reload data: " << cache_st.to_string();
+            sleep(config::file_cache_wait_sec_after_fail);
+            cache_st = _read_from_cache(offset, result, bytes_read, io_ctx);
+        } else {
+            // fail over to remote file reader, and return the status of remote read
+            LOG(WARNING) << "Failed to read data from file cache, and fail over to remote file: "
+                         << cache_st.to_string();
+            return _remote_file_reader->read_at(offset, result, bytes_read, io_ctx);
+        }
     }
     return cache_st;
 }
