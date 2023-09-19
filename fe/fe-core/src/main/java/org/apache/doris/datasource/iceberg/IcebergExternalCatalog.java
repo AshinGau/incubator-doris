@@ -18,7 +18,6 @@
 package org.apache.doris.datasource.iceberg;
 
 import org.apache.doris.catalog.Env;
-import org.apache.doris.catalog.HiveMetaStoreClientHelper;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.FeNameFormat;
 import org.apache.doris.common.util.Util;
@@ -26,9 +25,6 @@ import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.InitCatalogLog;
 import org.apache.doris.datasource.SessionContext;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hdfs.HdfsConfiguration;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.SupportsNamespaces;
@@ -36,9 +32,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.security.PrivilegedExceptionAction;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 public abstract class IcebergExternalCatalog extends ExternalCatalog {
@@ -64,15 +58,6 @@ public abstract class IcebergExternalCatalog extends ExternalCatalog {
     protected void init() {
         nsCatalog = (SupportsNamespaces) catalog;
         super.init();
-    }
-
-    protected Configuration getConfiguration() {
-        Configuration conf = new HdfsConfiguration();
-        Map<String, String> catalogProperties = catalogProperty.getHadoopProperties();
-        for (Map.Entry<String, String> entry : catalogProperties.entrySet()) {
-            conf.set(entry.getKey(), entry.getValue());
-        }
-        return conf;
     }
 
     public Catalog getCatalog() {
@@ -120,22 +105,9 @@ public abstract class IcebergExternalCatalog extends ExternalCatalog {
 
     public org.apache.iceberg.Table getIcebergTable(String dbName, String tblName) {
         makeSureInitialized();
-        UserGroupInformation ugi = HiveMetaStoreClientHelper.getUserGroupInformation(getConfiguration());
-        if (ugi != null) {
-            try {
-                return ugi.doAs(
-                        (PrivilegedExceptionAction<org.apache.iceberg.Table>) () -> Env.getCurrentEnv()
-                                .getExtMetaCacheMgr()
-                                .getIcebergMetadataCache()
-                                .getIcebergTable(catalog, catalogId, dbName, tblName));
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        } else {
-            return Env.getCurrentEnv()
-                    .getExtMetaCacheMgr()
-                    .getIcebergMetadataCache()
-                    .getIcebergTable(catalog, catalogId, dbName, tblName);
-        }
+        return Env.getCurrentEnv()
+                .getExtMetaCacheMgr()
+                .getIcebergMetadataCache()
+                .getIcebergTable(catalog, catalogId, dbName, tblName);
     }
 }

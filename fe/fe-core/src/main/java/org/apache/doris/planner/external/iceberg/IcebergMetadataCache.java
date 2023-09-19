@@ -18,11 +18,13 @@
 package org.apache.doris.planner.external.iceberg;
 
 import org.apache.doris.catalog.Env;
+import org.apache.doris.catalog.HiveMetaStoreClientHelper;
 import org.apache.doris.catalog.external.HMSExternalTable;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.datasource.CatalogIf;
+import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.HMSExternalCatalog;
 import org.apache.doris.datasource.iceberg.IcebergExternalCatalog;
 import org.apache.doris.datasource.property.constants.HMSProperties;
@@ -34,6 +36,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Iterables;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.Table;
@@ -41,6 +44,7 @@ import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.hive.HiveCatalog;
 
+import java.security.PrivilegedExceptionAction;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,7 +136,19 @@ public class IcebergMetadataCache {
         if (cacheTable != null) {
             return cacheTable;
         }
-        Table table = catalog.loadTable(TableIdentifier.of(dbName, tbName));
+        UserGroupInformation ugi = HiveMetaStoreClientHelper.getUserGroupInformation(
+                ((ExternalCatalog) Env.getCurrentEnv().getCatalogMgr().getCatalog(catalogId)).getConfiguration());
+        Table table;
+        if (ugi != null) {
+            try {
+                table = ugi.doAs(
+                        (PrivilegedExceptionAction<Table>) () -> catalog.loadTable(TableIdentifier.of(dbName, tbName)));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            table = catalog.loadTable(TableIdentifier.of(dbName, tbName));
+        }
         initIcebergTableFileIO(table);
 
         tableCache.put(key, table);
