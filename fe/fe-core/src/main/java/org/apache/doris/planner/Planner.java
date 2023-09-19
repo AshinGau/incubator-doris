@@ -65,7 +65,7 @@ public abstract class Planner {
                 LOG.warn("Failed to build explain plan tree", e);
                 return e.getMessage();
             }
-            return PlanTreePrinter.printPlanExplanation(builder.getTreeRoot());
+            return PlanTreePrinter.printPlanShape(builder.getTreeRoot());
         }
 
         // print text plan

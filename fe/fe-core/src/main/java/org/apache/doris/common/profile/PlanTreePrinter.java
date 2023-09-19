@@ -37,4 +37,22 @@ public class PlanTreePrinter {
         }
         return node;
     }
+
+
+    public static String printPlanShape(PlanTreeNode root) {
+        return buildShape(root, "");
+    }
+
+    private static String buildShape(PlanTreeNode planNode, String prefix) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(prefix).append(planNode.getIds()).append(":")
+                .append(planNode.getExplainStr().replaceAll("\n", "||")).append("\n");
+        String childPrefix = prefix + "--";
+        planNode.getChildren().forEach(
+                child -> {
+                    builder.append(buildShape(child, childPrefix));
+                }
+        );
+        return builder.toString();
+    }
 }
