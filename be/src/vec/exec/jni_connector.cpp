@@ -44,18 +44,26 @@ class RuntimeProfile;
 
 namespace doris::vectorized {
 
-#define FOR_LOGICAL_NUMERIC_TYPES(M) \
-    M(TypeIndex::Int8, Int8)         \
-    M(TypeIndex::UInt8, UInt8)       \
-    M(TypeIndex::Int16, Int16)       \
-    M(TypeIndex::UInt16, UInt16)     \
-    M(TypeIndex::Int32, Int32)       \
-    M(TypeIndex::UInt32, UInt32)     \
-    M(TypeIndex::Int64, Int64)       \
-    M(TypeIndex::UInt64, UInt64)     \
-    M(TypeIndex::Int128, Int128)     \
-    M(TypeIndex::Float32, Float32)   \
-    M(TypeIndex::Float64, Float64)
+#define FOR_FIXED_LENGTH_TYPES(M)           \
+    M(TypeIndex::Int8, Int8, false)         \
+    M(TypeIndex::UInt8, UInt8, false)       \
+    M(TypeIndex::Int16, Int16, false)       \
+    M(TypeIndex::UInt16, UInt16, false)     \
+    M(TypeIndex::Int32, Int32, false)       \
+    M(TypeIndex::UInt32, UInt32, false)     \
+    M(TypeIndex::Int64, Int64, false)       \
+    M(TypeIndex::UInt64, UInt64, false)     \
+    M(TypeIndex::Int128, Int128, false)     \
+    M(TypeIndex::Float32, Float32, false)   \
+    M(TypeIndex::Float64, Float64, false)   \
+    M(TypeIndex::Decimal128, Int128, true)  \
+    M(TypeIndex::Decimal128I, Int128, true) \
+    M(TypeIndex::Decimal32, Int32, true)    \
+    M(TypeIndex::Decimal64, Int64, true)    \
+    M(TypeIndex::Date, Int64, false)        \
+    M(TypeIndex::DateV2, UInt32, false)     \
+    M(TypeIndex::DateTime, Int64, false)    \
+    M(TypeIndex::DateTimeV2, UInt64, false)
 
 JniConnector::~JniConnector() {
     Status st = close();
@@ -277,29 +285,12 @@ Status JniConnector::_fill_column(ColumnPtr& doris_column, DataTypePtr& data_typ
     }
     // Date and DateTime are deprecated and not supported.
     switch (logical_type) {
-#define DISPATCH(NUMERIC_TYPE, CPP_NUMERIC_TYPE)       \
-    case NUMERIC_TYPE:                                 \
-        return _fill_numeric_column<CPP_NUMERIC_TYPE>( \
-                data_column, reinterpret_cast<CPP_NUMERIC_TYPE*>(_next_meta_as_ptr()), num_rows);
-        FOR_LOGICAL_NUMERIC_TYPES(DISPATCH)
+#define DISPATCH(TYPE_INDEX, CPP_TYPE, IS_DECIMAL)              \
+    case TYPE_INDEX:                                            \
+        return _fill_fixed_length_column<CPP_TYPE, IS_DECIMAL>( \
+                data_column, reinterpret_cast<CPP_TYPE*>(_next_meta_as_ptr()), num_rows);
+        FOR_FIXED_LENGTH_TYPES(DISPATCH)
 #undef DISPATCH
-    case TypeIndex::Decimal128:
-        [[fallthrough]];
-    case TypeIndex::Decimal128I:
-        return _fill_decimal_column<Int128>(
-                data_column, reinterpret_cast<Int128*>(_next_meta_as_ptr()), num_rows);
-    case TypeIndex::Decimal32:
-        return _fill_decimal_column<Int32>(data_column,
-                                           reinterpret_cast<Int32*>(_next_meta_as_ptr()), num_rows);
-    case TypeIndex::Decimal64:
-        return _fill_decimal_column<Int64>(data_column,
-                                           reinterpret_cast<Int64*>(_next_meta_as_ptr()), num_rows);
-    case TypeIndex::DateV2:
-        return _decode_time_column<UInt32>(
-                data_column, reinterpret_cast<UInt32*>(_next_meta_as_ptr()), num_rows);
-    case TypeIndex::DateTimeV2:
-        return _decode_time_column<UInt64>(
-                data_column, reinterpret_cast<UInt64*>(_next_meta_as_ptr()), num_rows);
     case TypeIndex::String:
         [[fallthrough]];
     case TypeIndex::FixedString:
@@ -313,6 +304,30 @@ Status JniConnector::_fill_column(ColumnPtr& doris_column, DataTypePtr& data_typ
     default:
         return Status::InvalidArgument("Unsupported type {} in jni scanner",
                                        getTypeName(logical_type));
+    }
+    return Status::OK();
+}
+
+Status JniConnector::_fill_string_column(MutableColumnPtr& doris_column, size_t num_rows) {
+    if (num_rows == 0) {
+        return Status::OK();
+    }
+    auto& string_col = static_cast<const ColumnString&>(*doris_column);
+    ColumnString::Chars& string_chars = const_cast<ColumnString::Chars&>(string_col.get_chars());
+    ColumnString::Offsets& string_offsets =
+            const_cast<ColumnString::Offsets&>(string_col.get_offsets());
+    int* offsets = reinterpret_cast<int*>(_next_meta_as_ptr());
+    char* chars = reinterpret_cast<char*>(_next_meta_as_ptr());
+
+    size_t origin_chars_size = string_chars.size();
+    string_chars.resize(origin_chars_size + offsets[num_rows - 1]);
+    memcpy(string_chars.data() + origin_chars_size, chars, offsets[num_rows - 1]);
+
+    size_t origin_offsets_size = string_offsets.size();
+    size_t start_offset = string_offsets[origin_offsets_size - 1];
+    string_offsets.resize(origin_offsets_size + num_rows);
+    for (size_t i = 0; i < num_rows; ++i) {
+        string_offsets[origin_offsets_size + i] = offsets[i] + start_offset;
     }
     return Status::OK();
 }
@@ -378,30 +393,6 @@ Status JniConnector::_fill_struct_column(MutableColumnPtr& doris_column, DataTyp
     return Status::OK();
 }
 
-Status JniConnector::_fill_string_column(MutableColumnPtr& doris_column, size_t num_rows) {
-    if (num_rows == 0) {
-        return Status::OK();
-    }
-    auto& string_col = static_cast<const ColumnString&>(*doris_column);
-    ColumnString::Chars& string_chars = const_cast<ColumnString::Chars&>(string_col.get_chars());
-    ColumnString::Offsets& string_offsets =
-            const_cast<ColumnString::Offsets&>(string_col.get_offsets());
-    int* offsets = reinterpret_cast<int*>(_next_meta_as_ptr());
-    char* chars = reinterpret_cast<char*>(_next_meta_as_ptr());
-
-    size_t origin_chars_size = string_chars.size();
-    string_chars.resize(origin_chars_size + offsets[num_rows - 1]);
-    memcpy(string_chars.data() + origin_chars_size, chars, offsets[num_rows - 1]);
-
-    size_t origin_offsets_size = string_offsets.size();
-    size_t start_offset = string_offsets[origin_offsets_size - 1];
-    string_offsets.resize(origin_offsets_size + num_rows);
-    for (size_t i = 0; i < num_rows; ++i) {
-        string_offsets[origin_offsets_size + i] = offsets[i] + start_offset;
-    }
-    return Status::OK();
-}
-
 void JniConnector::_generate_predicates(
         std::unordered_map<std::string, ColumnValueRangeType>* colname_to_value_range) {
     if (colname_to_value_range == nullptr) {
@@ -414,7 +405,7 @@ void JniConnector::_generate_predicates(
     }
 }
 
-std::string JniConnector::get_hive_type(const TypeDescriptor& desc) {
+std::string JniConnector::get_jni_type(const TypeDescriptor& desc) {
     std::ostringstream buffer;
     switch (desc.type) {
     case TYPE_BOOLEAN:
@@ -438,17 +429,18 @@ std::string JniConnector::get_hive_type(const TypeDescriptor& desc) {
         return buffer.str();
     }
     case TYPE_DATE:
-        [[fallthrough]];
+        return "datev1";
     case TYPE_DATEV2:
-        return "date";
+        return "datev2";
     case TYPE_DATETIME:
         [[fallthrough]];
+    case TYPE_TIME:
+        return "datetimev1";
     case TYPE_DATETIMEV2:
         [[fallthrough]];
-    case TYPE_TIME:
-        [[fallthrough]];
     case TYPE_TIMEV2:
-        return "timestamp";
+        // can ignore precision of timestamp in jni
+        return "datetimev2";
     case TYPE_BINARY:
         return "binary";
     case TYPE_CHAR: {
@@ -479,18 +471,18 @@ std::string JniConnector::get_hive_type(const TypeDescriptor& desc) {
             if (i != 0) {
                 buffer << ",";
             }
-            buffer << desc.field_names[i] << ":" << get_hive_type(desc.children[i]);
+            buffer << desc.field_names[i] << ":" << get_jni_type(desc.children[i]);
         }
         buffer << ">";
         return buffer.str();
     }
     case TYPE_ARRAY: {
-        buffer << "array<" << get_hive_type(desc.children[0]) << ">";
+        buffer << "array<" << get_jni_type(desc.children[0]) << ">";
         return buffer.str();
     }
     case TYPE_MAP: {
-        buffer << "map<" << get_hive_type(desc.children[0]) << ","
-               << get_hive_type(desc.children[1]) << ">";
+        buffer << "map<" << get_jni_type(desc.children[0]) << "," << get_jni_type(desc.children[1])
+               << ">";
         return buffer.str();
     }
     default:
@@ -514,35 +506,14 @@ void JniConnector::_fill_column_meta(ColumnPtr& doris_column, DataTypePtr& data_
         data_column = doris_column->assume_mutable();
     }
     switch (logical_type) {
-#define DISPATCH(NUMERIC_TYPE, CPP_NUMERIC_TYPE)                                          \
-    case NUMERIC_TYPE: {                                                                  \
-        meta_data.emplace_back(_get_numeric_data_address<CPP_NUMERIC_TYPE>(data_column)); \
-        break;                                                                            \
+#define DISPATCH(TYPE_INDEX, CPP_TYPE, IS_DECIMAL)                                    \
+    case TYPE_INDEX: {                                                                \
+        meta_data.emplace_back(                                                       \
+                _get_fixed_length_column_address<CPP_TYPE, IS_DECIMAL>(data_column)); \
+        break;                                                                        \
     }
-        FOR_LOGICAL_NUMERIC_TYPES(DISPATCH)
+        FOR_FIXED_LENGTH_TYPES(DISPATCH)
 #undef DISPATCH
-    case TypeIndex::Decimal128:
-        [[fallthrough]];
-    case TypeIndex::Decimal128I: {
-        meta_data.emplace_back(_get_decimal_data_address<Int128>(data_column));
-        break;
-    }
-    case TypeIndex::Decimal32: {
-        meta_data.emplace_back(_get_decimal_data_address<Int32>(data_column));
-        break;
-    }
-    case TypeIndex::Decimal64: {
-        meta_data.emplace_back(_get_decimal_data_address<Int64>(data_column));
-        break;
-    }
-    case TypeIndex::DateV2: {
-        meta_data.emplace_back(_get_time_data_address<UInt32>(data_column));
-        break;
-    }
-    case TypeIndex::DateTimeV2: {
-        meta_data.emplace_back(_get_time_data_address<UInt64>(data_column));
-        break;
-    }
     case TypeIndex::String:
         [[fallthrough]];
     case TypeIndex::FixedString: {

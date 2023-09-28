@@ -1001,7 +1001,7 @@ Status JdbcConnector::exec_stmt_write(Block* block, const VExprContextSPtrs& out
     for (int i = 0; i < block->columns(); ++i) {
         // column name maybe empty or has special characters
         // std::string field = block->get_by_position(i).name;
-        std::string type = JniConnector::get_hive_type(output_vexpr_ctxs[i]->root()->type());
+        std::string type = JniConnector::get_jni_type(output_vexpr_ctxs[i]->root()->type());
         if (i == 0) {
             required_fields << "_col" << i;
             columns_types << type;

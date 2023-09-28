@@ -68,7 +68,8 @@ public class VectorColumn {
     // todo: support pruned struct fields
     private List<Integer> structFieldIndex;
 
-    public VectorColumn(ColumnType columnType, int capacity) {
+    // Create writable column
+    private VectorColumn(ColumnType columnType, int capacity) {
         this.columnType = columnType;
         this.capacity = 0;
         this.nullMap = 0;
@@ -99,7 +100,7 @@ public class VectorColumn {
     }
 
     // restore the child of string column & restore meta column
-    public VectorColumn(long address, int capacity, ColumnType columnType) {
+    private VectorColumn(long address, int capacity, ColumnType columnType) {
         this.columnType = columnType;
         this.capacity = capacity;
         this.nullMap = 0;
@@ -116,8 +117,8 @@ public class VectorColumn {
         }
     }
 
-    // restore block column
-    public VectorColumn(ColumnType columnType, int numRows, long columnMetaAddress) {
+    // Create readable column
+    private VectorColumn(ColumnType columnType, int numRows, long columnMetaAddress) {
         if (columnType.isUnsupported()) {
             throw new RuntimeException("Unsupported type for column: " + columnType.getName());
         }
@@ -165,6 +166,18 @@ public class VectorColumn {
         }
     }
 
+    public static VectorColumn createWritableColumn(ColumnType columnType, int capacity) {
+        return new VectorColumn(columnType, capacity);
+    }
+
+    public static VectorColumn createReadableColumn(ColumnType columnType, int numRows, long columnMetaAddress) {
+        return new VectorColumn(columnType, numRows, columnMetaAddress);
+    }
+
+    public static VectorColumn createReadableColumn(long address, int capacity, ColumnType columnType) {
+        return new VectorColumn(address, capacity, columnType);
+    }
+
     private int getArrayEndOffset(int rowId) {
         if (rowId >= 0 && rowId < appendIndex) {
             if (isComplexType) {
@@ -184,6 +197,10 @@ public class VectorColumn {
 
     public long dataAddress() {
         return data;
+    }
+
+    public int numRows() {
+        return appendIndex;
     }
 
     public long offsetAddress() {
@@ -331,8 +348,10 @@ public class VectorColumn {
             case DECIMAL64:
             case DECIMAL128:
                 return appendDecimal(new BigDecimal(0));
+            case DATE:
             case DATEV2:
                 return appendDate(LocalDate.MIN);
+            case DATETIME:
             case DATETIMEV2:
                 return appendDateTime(LocalDateTime.MIN);
             case CHAR:
@@ -507,13 +526,24 @@ public class VectorColumn {
     }
 
     private void putDate(int rowId, LocalDate v) {
-        int date = TypeNativeBytes.convertToDateV2(v.getYear(), v.getMonthValue(), v.getDayOfMonth());
-        OffHeap.putInt(null, data + rowId * 4L, date);
+        if (columnType.isDateV2()) {
+            int date = TypeNativeBytes.convertToDateV2(v.getYear(), v.getMonthValue(), v.getDayOfMonth());
+            OffHeap.putInt(null, data + rowId * 4L, date);
+        } else {
+            long date = TypeNativeBytes.convertToDateTime(v.getYear(), v.getMonthValue(), v.getDayOfMonth(), 0,
+                    0, 0, true);
+            OffHeap.putLong(null, data + rowId * 8L, date);
+        }
     }
 
     public LocalDate getDate(int rowId) {
-        int date = OffHeap.getInt(null, data + rowId * 4L);
-        return TypeNativeBytes.convertToJavaDate(date);
+        if (columnType.isDateV2()) {
+            int date = OffHeap.getInt(null, data + rowId * 4L);
+            return TypeNativeBytes.convertToJavaDateV2(date);
+        } else {
+            long date = OffHeap.getLong(null, data + rowId * 8L);
+            return TypeNativeBytes.convertToJavaDateV1(date);
+        }
     }
 
     public int appendDateTime(LocalDateTime v) {
@@ -524,12 +554,22 @@ public class VectorColumn {
 
     public LocalDateTime getDateTime(int rowId) {
         long time = OffHeap.getLong(null, data + rowId * 8L);
-        return TypeNativeBytes.convertToJavaDateTime(time);
+        if (columnType.isDateTimeV2()) {
+            return TypeNativeBytes.convertToJavaDateTimeV2(time);
+        } else {
+            return TypeNativeBytes.convertToJavaDateTimeV1(time);
+        }
     }
 
     private void putDateTime(int rowId, LocalDateTime v) {
-        long time = TypeNativeBytes.convertToDateTimeV2(v.getYear(), v.getMonthValue(), v.getDayOfMonth(), v.getHour(),
-                v.getMinute(), v.getSecond(), v.getNano() / 1000);
+        long time;
+        if (columnType.isDateTimeV2()) {
+            time = TypeNativeBytes.convertToDateTimeV2(v.getYear(), v.getMonthValue(), v.getDayOfMonth(), v.getHour(),
+                    v.getMinute(), v.getSecond(), v.getNano() / 1000);
+        } else {
+            time = TypeNativeBytes.convertToDateTime(v.getYear(), v.getMonthValue(), v.getDayOfMonth(), v.getHour(),
+                    v.getMinute(), v.getSecond(), false);
+        }
         OffHeap.putLong(null, data + rowId * 8L, time);
     }
 
@@ -705,9 +745,11 @@ public class VectorColumn {
             case DECIMAL128:
                 appendDecimal(o.getDecimal());
                 break;
+            case DATE:
             case DATEV2:
                 appendDate(o.getDate());
                 break;
+            case DATETIME:
             case DATETIMEV2:
                 appendDateTime(o.getDateTime());
                 break;
@@ -786,9 +828,11 @@ public class VectorColumn {
             case DECIMAL128:
                 sb.append(getDecimal(i));
                 break;
+            case DATE:
             case DATEV2:
                 sb.append(getDate(i));
                 break;
+            case DATETIME:
             case DATETIMEV2:
                 sb.append(getDateTime(i));
                 break;

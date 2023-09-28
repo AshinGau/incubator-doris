@@ -181,7 +181,7 @@ public class JdbcExecutor {
         for (int i = 0; i < types.length; i++) {
             columnTypes[i] = ColumnType.parseType(requiredFields[i], types[i]);
         }
-        VectorTable batchTable = new VectorTable(columnTypes, requiredFields, metaAddress);
+        VectorTable batchTable = VectorTable.createReadableTable(columnTypes, requiredFields, metaAddress);
         // todo: insert the batch table by PreparedStatement
         // Can't release or close batchTable, it's released by c++
         try {

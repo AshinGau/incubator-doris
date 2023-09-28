@@ -236,7 +236,7 @@ public:
     /**
      * Map PrimitiveType to hive type.
      */
-    static std::string get_hive_type(const TypeDescriptor& desc);
+    static std::string get_jni_type(const TypeDescriptor& desc);
 
     static Status generate_meta_info(Block* block, std::unique_ptr<long[]>& meta);
 
@@ -298,6 +298,8 @@ private:
 
     Status _fill_column(ColumnPtr& doris_column, DataTypePtr& data_type, size_t num_rows);
 
+    Status _fill_string_column(MutableColumnPtr& doris_column, size_t num_rows);
+
     Status _fill_map_column(MutableColumnPtr& doris_column, DataTypePtr& data_type,
                             size_t num_rows);
 
@@ -310,54 +312,34 @@ private:
     static void _fill_column_meta(ColumnPtr& doris_column, DataTypePtr& data_type,
                                   std::vector<long>& meta_data);
 
-    template <typename CppType>
-    Status _fill_numeric_column(MutableColumnPtr& doris_column, CppType* ptr, size_t num_rows) {
-        auto& column_data = static_cast<ColumnVector<CppType>&>(*doris_column).get_data();
-        size_t origin_size = column_data.size();
-        column_data.resize(origin_size + num_rows);
-        memcpy(column_data.data() + origin_size, ptr, sizeof(CppType) * num_rows);
+    template <typename CppType, bool IS_DECIMAL>
+    Status _fill_fixed_length_column(MutableColumnPtr& doris_column, CppType* ptr,
+                                     size_t num_rows) {
+        if constexpr (IS_DECIMAL) {
+            auto& column_data =
+                    static_cast<ColumnDecimal<Decimal<CppType>>&>(*doris_column).get_data();
+            size_t origin_size = column_data.size();
+            column_data.resize(origin_size + num_rows);
+            memcpy(column_data.data() + origin_size, ptr, sizeof(CppType) * num_rows);
+        } else {
+            auto& column_data = static_cast<ColumnVector<CppType>&>(*doris_column).get_data();
+            size_t origin_size = column_data.size();
+            column_data.resize(origin_size + num_rows);
+            memcpy(column_data.data() + origin_size, ptr, sizeof(CppType) * num_rows);
+        }
         return Status::OK();
     }
 
-    template <typename CppType>
-    static long _get_numeric_data_address(MutableColumnPtr& doris_column) {
-        return (long)static_cast<ColumnVector<CppType>&>(*doris_column).get_data().data();
+    template <typename CppType, bool IS_DECIMAL>
+    static long _get_fixed_length_column_address(MutableColumnPtr& doris_column) {
+        if constexpr (IS_DECIMAL) {
+            return (long)static_cast<ColumnDecimal<Decimal<CppType>>&>(*doris_column)
+                    .get_data()
+                    .data();
+        } else {
+            return (long)static_cast<ColumnVector<CppType>&>(*doris_column).get_data().data();
+        }
     }
-
-    template <typename DecimalPrimitiveType>
-    Status _fill_decimal_column(MutableColumnPtr& doris_column, DecimalPrimitiveType* ptr,
-                                size_t num_rows) {
-        auto& column_data =
-                static_cast<ColumnDecimal<Decimal<DecimalPrimitiveType>>&>(*doris_column)
-                        .get_data();
-        size_t origin_size = column_data.size();
-        column_data.resize(origin_size + num_rows);
-        memcpy(column_data.data() + origin_size, ptr, sizeof(DecimalPrimitiveType) * num_rows);
-        return Status::OK();
-    }
-
-    template <typename DecimalPrimitiveType>
-    static long _get_decimal_data_address(MutableColumnPtr& doris_column) {
-        return (long)static_cast<ColumnDecimal<Decimal<DecimalPrimitiveType>>&>(*doris_column)
-                .get_data()
-                .data();
-    }
-
-    template <typename CppType>
-    Status _decode_time_column(MutableColumnPtr& doris_column, CppType* ptr, size_t num_rows) {
-        auto& column_data = static_cast<ColumnVector<CppType>&>(*doris_column).get_data();
-        size_t origin_size = column_data.size();
-        column_data.resize(origin_size + num_rows);
-        memcpy(column_data.data() + origin_size, ptr, sizeof(CppType) * num_rows);
-        return Status::OK();
-    }
-
-    template <typename CppType>
-    static long _get_time_data_address(MutableColumnPtr& doris_column) {
-        return (long)static_cast<ColumnVector<CppType>&>(*doris_column).get_data().data();
-    }
-
-    Status _fill_string_column(MutableColumnPtr& doris_column, size_t num_rows);
 
     void _generate_predicates(
             std::unordered_map<std::string, ColumnValueRangeType>* colname_to_value_range);

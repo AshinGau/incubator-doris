@@ -80,6 +80,22 @@ public class TypeNativeBytes {
         return new BigDecimal(value, scale);
     }
 
+    public static long convertToDateTime(int year, int month, int day, int hour, int minute, int second,
+            boolean isDate) {
+        long time = 0;
+        time = time + year;
+        time = (time << 8) + month;
+        time = (time << 8) + day;
+        time = (time << 8) + hour;
+        time = (time << 8) + minute;
+        time = (time << 12) + second;
+        int type = isDate ? 2 : 3;
+        time = (time << 3) + type;
+        //this bit is int neg = 0;
+        time = (time << 1);
+        return time;
+    }
+
     public static int convertToDateV2(int year, int month, int day) {
         return (int) (day | (long) month << 5 | (long) year << 9);
     }
@@ -95,7 +111,23 @@ public class TypeNativeBytes {
                 | (long) day << 37 | (long) month << 42 | (long) year << 46;
     }
 
-    public static LocalDate convertToJavaDate(int date) {
+    public static LocalDate convertToJavaDateV1(long date) {
+        int year = (int) (date >> 48);
+        int yearMonth = (int) (date >> 40);
+        int yearMonthDay = (int) (date >> 32);
+
+        int month = (yearMonth & 0XFF);
+        int day = (yearMonthDay & 0XFF);
+        LocalDate value;
+        try {
+            value = LocalDate.of(year, month, day);
+        } catch (DateTimeException e) {
+            value = LocalDate.MAX;
+        }
+        return value;
+    }
+
+    public static LocalDate convertToJavaDateV2(int date) {
         int year = date >> 9;
         int month = (date >> 5) & 0XF;
         int day = date & 0X1F;
@@ -108,7 +140,32 @@ public class TypeNativeBytes {
         return value;
     }
 
-    public static LocalDateTime convertToJavaDateTime(long time) {
+    public static LocalDateTime convertToJavaDateTimeV1(long time) {
+        int year = (int) (time >> 48);
+        int yearMonth = (int) (time >> 40);
+        int yearMonthDay = (int) (time >> 32);
+
+        int month = (yearMonth & 0XFF);
+        int day = (yearMonthDay & 0XFF);
+
+        int hourMinuteSecond = (int) (time % (1 << 31));
+        int minuteTypeNeg = (hourMinuteSecond % (1 << 16));
+
+        int hour = (hourMinuteSecond >> 24);
+        int minute = ((hourMinuteSecond >> 16) & 0XFF);
+        int second = (minuteTypeNeg >> 4);
+        //here don't need those bits are type = ((minus_type_neg >> 1) & 0x7);
+
+        LocalDateTime value;
+        try {
+            value = LocalDateTime.of(year, month, day, hour, minute, second);
+        } catch (DateTimeException e) {
+            value = LocalDateTime.MAX;
+        }
+        return value;
+    }
+
+    public static LocalDateTime convertToJavaDateTimeV2(long time) {
         int year = (int) (time >> 46);
         int yearMonth = (int) (time >> 42);
         int yearMonthDay = (int) (time >> 37);
