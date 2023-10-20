@@ -60,8 +60,12 @@ Status LocalFileSystem::create_file_impl(const Path& file, FileWriterPtr* writer
     if (-1 == fd) {
         return Status::IOError("failed to open {}: {}", file.native(), errno_to_str());
     }
+    bool sync_data = true;
+    if (opts != nullptr) {
+        sync_data = opts->sync_file_data;
+    }
     *writer = std::make_unique<LocalFileWriter>(
-            file, fd, std::static_pointer_cast<LocalFileSystem>(shared_from_this()));
+            file, fd, std::static_pointer_cast<LocalFileSystem>(shared_from_this()), sync_data);
     return Status::OK();
 }
 

@@ -33,6 +33,7 @@ struct FileWriterOptions {
     bool write_file_cache = false;
     bool is_cold_data = false;
     int64_t file_cache_expiration = 0; // Absolute time
+    bool sync_file_data = true; // weather flush data into storage system
 };
 
 class FileWriter {
