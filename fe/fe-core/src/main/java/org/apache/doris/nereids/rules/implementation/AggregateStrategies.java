@@ -1659,6 +1659,6 @@ public class AggregateStrategies implements ImplementationRuleFactory {
                 }
             }
         }
-        return true;
+        return false;
     }
 }
