@@ -600,7 +600,7 @@ Status ParquetReader::_next_row_group_reader() {
                 _generate_random_access_ranges(row_group_index, &avg_io_size);
         // The underlying page reader will prefetch data in column.
         // Using both MergeRangeFileReader and BufferedStreamReader simultaneously would waste a lot of memory.
-        group_file_reader = avg_io_size < io::MergeRangeFileReader::SMALL_IO
+        group_file_reader = io_ranges.size() > 1 && avg_io_size < io::MergeRangeFileReader::SMALL_IO
                                     ? std::make_shared<io::MergeRangeFileReader>(
                                               _profile, _file_reader, io_ranges)
                                     : _file_reader;
