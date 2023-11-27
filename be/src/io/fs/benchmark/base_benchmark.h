@@ -109,6 +109,7 @@ public:
         bm_log("begin to read {}, thread: {}", _name, state.thread_index());
         size_t buffer_size =
                 _conf_map.contains("buffer_size") ? std::stol(_conf_map["buffer_size"]) : 1000000L;
+        bool is_random = _conf_map.contains("random_read") ? _conf_map["random_read"] == "true" : false;
         std::vector<char> buffer;
         buffer.resize(buffer_size);
         doris::Slice data = {buffer.data(), buffer.size()};
@@ -119,13 +120,30 @@ public:
         if (_file_size > 0) {
             read_size = std::min(read_size, _file_size);
         }
-        long remaining_size = read_size;
+        size_t remaining_size = read_size;
 
         Status status;
         auto start = std::chrono::high_resolution_clock::now();
+        std::vector<int> random_read_pos;
+        if (is_random) {
+            int num_pos = remaining_size / buffer_size + 1;
+            random_read_pos.resize(num_pos);
+            for (int i = 0; i < num_pos; ++i) {
+                random_read_pos[i] = i;
+            }
+            random_shuffle(random_read_pos.begin(), random_read_pos.end());
+        }
+        int random_index = 0;
         while (remaining_size > 0) {
             bytes_read = 0;
             size_t size = std::min(buffer_size, (size_t)remaining_size);
+            if (is_random) {
+                offset = random_read_pos[random_index++] * buffer_size;
+                size = std::min(buffer_size, remaining_size - offset);
+                if (size <= 0) {
+                    break;
+                }
+            }
             data.size = size;
             status = reader->read_at(offset, data, &bytes_read);
             if (!status.ok() || bytes_read < 0) {
