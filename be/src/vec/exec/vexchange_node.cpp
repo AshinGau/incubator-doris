@@ -127,6 +127,7 @@ Status VExchangeNode::get_next(RuntimeState* state, Block* block, bool* eos) {
         if (_num_rows_returned + block->rows() < _limit) {
             _num_rows_returned += block->rows();
         } else {
+            LOG(WARNING) << "exchange node get full rows, _limit = " << _limit;
             *eos = true;
             auto limit = _limit - _num_rows_returned;
             block->set_num_rows(limit);
@@ -138,6 +139,7 @@ Status VExchangeNode::get_next(RuntimeState* state, Block* block, bool* eos) {
 }
 
 void VExchangeNode::release_resource(RuntimeState* state) {
+    LOG(WARNING) << "exchange node is released";
     if (_stream_recvr != nullptr) {
         _stream_recvr->close();
     }

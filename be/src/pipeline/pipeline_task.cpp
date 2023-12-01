@@ -298,6 +298,9 @@ Status PipelineTask::execute(bool* eos) {
             }
         }
         *eos = _data_state == SourceState::FINISHED;
+        if (*eos) {
+            LOG(WARNING) << "_data_state == SourceState::FINISHED";
+        }
 
         if (_block->rows() != 0 || *eos) {
             SCOPED_TIMER(_sink_timer);
@@ -309,6 +312,8 @@ Status PipelineTask::execute(bool* eos) {
             handle_group_commit();
             if (!status.is<ErrorCode::END_OF_FILE>()) {
                 RETURN_IF_ERROR(status);
+            } else {
+                LOG(WARNING) << "status.is<ErrorCode::END_OF_FILE>()";
             }
             *eos = status.is<ErrorCode::END_OF_FILE>() ? true : *eos;
             if (*eos) { // just return, the scheduler will do finish work

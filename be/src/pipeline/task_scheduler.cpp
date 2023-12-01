@@ -106,15 +106,18 @@ void BlockedTaskScheduler::_schedule() {
         auto origin_local_block_tasks_size = local_blocked_tasks.size();
         auto iter = local_blocked_tasks.begin();
         VecDateTimeValue now = VecDateTimeValue::local_time();
+        // LOG(WARNING) << "origin_local_block_tasks_size = " << origin_local_block_tasks_size;
         while (iter != local_blocked_tasks.end()) {
             auto* task = *iter;
             auto state = task->get_state();
             if (state == PipelineTaskState::PENDING_FINISH) {
                 // should cancel or should finish
                 if (task->is_pending_finish()) {
+                    // LOG(WARNING) << "pending finish, get next";
                     iter++;
                 } else {
                     VLOG_DEBUG << "Task pending" << task->debug_string();
+                    LOG(WARNING) << "mark task as PENDING_FINISH in block task";
                     _make_task_run(local_blocked_tasks, iter, PipelineTaskState::PENDING_FINISH);
                 }
             } else if (task->query_context()->is_cancelled()) {
@@ -184,6 +187,8 @@ void BlockedTaskScheduler::_make_task_run(std::list<PipelineTask*>& local_tasks,
     auto task = *task_itr;
     task->set_state(t_state);
     local_tasks.erase(task_itr++);
+    TUniqueId uid = task->instance_id();
+    LOG(WARNING) << uid.hi << uid.lo << ": make task run, push_back task";
     static_cast<void>(task->get_task_queue()->push_back(task));
 }
 
@@ -202,6 +207,7 @@ Status TaskScheduler::start() {
                               .set_cgroup_cpu_ctl(_cgroup_cpu_ctl)
                               .build(&_fix_thread_pool));
     _markers.reserve(cores);
+    LOG(WARNING) << "number of task markers = " << cores;
     for (size_t i = 0; i < cores; ++i) {
         _markers.push_back(std::make_unique<std::atomic<bool>>(true));
         RETURN_IF_ERROR(
@@ -211,6 +217,8 @@ Status TaskScheduler::start() {
 }
 
 Status TaskScheduler::schedule_task(PipelineTask* task) {
+    TUniqueId uid = task->instance_id();
+    LOG(WARNING) << uid.hi << uid.lo << ": schedule task, push_back task";
     return _task_queue->push_back(task);
     // TODO control num of task
 }
@@ -218,7 +226,10 @@ Status TaskScheduler::schedule_task(PipelineTask* task) {
 void TaskScheduler::_do_work(size_t index) {
     const auto& marker = _markers[index];
     while (*marker) {
+        LOG(WARNING) << "start to take task from queue, index = " << index;
         auto* task = _task_queue->take(index);
+        TUniqueId uid = task->instance_id();
+        LOG(WARNING) << uid.hi << uid.lo << ": finish to take task from queue, index = " << index;
         if (!task) {
             continue;
         }
@@ -230,6 +241,9 @@ void TaskScheduler::_do_work(size_t index) {
 
         auto check_state = task->get_state();
         if (check_state == PipelineTaskState::PENDING_FINISH) {
+            LOG(WARNING) << uid.hi << uid.lo
+                         << ": task state = PENDING_FINISH, index = " << index
+                         << ", is_pending_finish = " << task->is_pending_finish();
             DCHECK(!task->is_pending_finish()) << "must not pending close " << task->debug_string();
             Status exec_status = fragment_ctx->get_query_context()->exec_status();
             _try_close_task(task,
@@ -242,6 +256,8 @@ void TaskScheduler::_do_work(size_t index) {
                 << "task already finish";
 
         if (canceled) {
+            LOG(WARNING) << uid.hi << uid.lo
+                         << ": task state = canceled, index = " << index;
             // may change from pending FINISH，should called cancel
             // also may change form BLOCK, other task called cancel
 
@@ -259,7 +275,11 @@ void TaskScheduler::_do_work(size_t index) {
         auto status = Status::OK();
 
         try {
+            LOG(WARNING) << uid.hi << uid.lo
+                         << ": start to execute task, index = " << index;
             status = task->execute(&eos);
+            LOG(WARNING) << uid.hi << uid.lo
+                         << ": end to execute task, index = " << index << ", eos = " << eos;
         } catch (const Exception& e) {
             status = e.to_status();
         }
@@ -299,6 +319,9 @@ void TaskScheduler::_do_work(size_t index) {
                                 task->query_context()->query_id(),
                                 task->fragment_context()->get_fragment_instance_id()),
                         fragment_ctx->is_canceled());
+                LOG(WARNING) << uid.hi << uid.lo
+                             << ": task state = eof, index = " << index
+                             << ", is_canceled = " << fragment_ctx->is_canceled();
                 _try_close_task(task,
                                 fragment_ctx->is_canceled() ? PipelineTaskState::CANCELED
                                                             : PipelineTaskState::FINISHED,
@@ -313,6 +336,8 @@ void TaskScheduler::_do_work(size_t index) {
         }
 
         auto pipeline_state = task->get_state();
+        LOG(WARNING) << uid.hi << uid.lo
+                     << ": task state name = " << get_state_name(pipeline_state) << ", index = " << index;
         switch (pipeline_state) {
         case PipelineTaskState::BLOCKED_FOR_SOURCE:
         case PipelineTaskState::BLOCKED_FOR_SINK:
@@ -320,9 +345,11 @@ void TaskScheduler::_do_work(size_t index) {
         case PipelineTaskState::BLOCKED_FOR_DEPENDENCY:
             static_cast<void>(_blocked_task_scheduler->add_blocked_task(task));
             break;
-        case PipelineTaskState::RUNNABLE:
+        case PipelineTaskState::RUNNABLE: {
+            LOG(WARNING) << uid.hi << uid.lo << ": runnable task, push_back task";
             static_cast<void>(_task_queue->push_back(task, index));
             break;
+        }
         default:
             DCHECK(false) << "error state after run task, " << get_state_name(pipeline_state);
             break;
@@ -333,19 +360,24 @@ void TaskScheduler::_do_work(size_t index) {
 void TaskScheduler::_try_close_task(PipelineTask* task, PipelineTaskState state,
                                     Status exec_status) {
     auto status = task->try_close(exec_status);
+    TUniqueId uid = task->instance_id();
     if (!status.ok() && state != PipelineTaskState::CANCELED) {
+        LOG(WARNING) << uid.hi << uid.lo << ": try to close task, reason = CANCELED";
         // Call `close` if `try_close` failed to make sure allocated resources are released
         static_cast<void>(task->close(exec_status));
         task->query_context()->cancel(true, status.to_string(),
                                       Status::Cancelled(status.to_string()));
         state = PipelineTaskState::CANCELED;
     } else if (task->is_pending_finish()) {
+        LOG(WARNING) << uid.hi << uid.lo << "try to close task, mark task as PENDING_FINISH";
         task->set_state(PipelineTaskState::PENDING_FINISH);
         static_cast<void>(_blocked_task_scheduler->add_blocked_task(task));
         return;
     } else {
+        LOG(WARNING) << uid.hi << uid.lo << "try to close task, reason = status_not_ok";
         status = task->close(exec_status);
         if (!status.ok() && state != PipelineTaskState::CANCELED) {
+            LOG(WARNING) << uid.hi << uid.lo << "try to close task, reason = status_not_ok_in";
             task->query_context()->cancel(true, status.to_string(),
                                           Status::Cancelled(status.to_string()));
             state = PipelineTaskState::CANCELED;

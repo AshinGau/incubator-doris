@@ -253,15 +253,21 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
         if (config::exchange_sink_ignore_eovercrowded) {
             closure->cntl.ignore_eovercrowded();
         }
-        closure->addFailedHandler(
-                [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
+        closure->addFailedHandler([&](const InstanceLoId& id, const std::string& err) {
+            LOG(WARNING) << "addFailedHandler: " << err;
+            _failed(id, err);
+        });
         closure->start_rpc_time = GetCurrentTimeNanos();
         closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                        const PTransmitDataResult& result,
                                        const int64_t& start_rpc_time) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s(Status::create(result.status()));
+            if (!s.ok()) {
+                LOG(WARNING) << "addSuccessHandler: _set_receiver_eof: " << s.to_string();
+            }
             if (s.is<ErrorCode::END_OF_FILE>()) {
+                LOG(WARNING) << "_set_receiver_eof";
                 _set_receiver_eof(id);
             } else if (!s.ok()) {
                 _failed(id,

@@ -315,6 +315,7 @@ Status VFileScanner::_get_block_impl(RuntimeState* state, Block* block, bool* eo
         }
 
         if (_scanner_eof) {
+            LOG(WARNING) << "vfilescanner return eof, with last path=" << _ranges.back().path;
             *eof = true;
             return Status::OK();
         }
@@ -725,6 +726,7 @@ Status VFileScanner::_get_next_reader() {
         _src_block_init = false;
         if (_next_range >= _ranges.size()) {
             _scanner_eof = true;
+            LOG(WARNING) << "vfilescanner is eof, with last path=" << _ranges.back().path;
             _state->update_num_finished_scan_range(1);
             return Status::OK();
         }
@@ -1106,6 +1108,12 @@ Status VFileScanner::close(RuntimeState* state) {
     }
 
     RETURN_IF_ERROR(VScanner::close(state));
+    if (_next_range == 0) {
+        _next_range++;
+    }
+    LOG(WARNING) << "vfilescanner is closed, eof=" << _scanner_eof
+                 << ", with last path=" << _ranges[_next_range - 1].path;
+    _is_closed = true;
     return Status::OK();
 }
 

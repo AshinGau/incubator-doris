@@ -516,6 +516,7 @@ void ExecNode::release_block_memory(vectorized::Block& block, uint16_t child_idx
 
 void ExecNode::reached_limit(vectorized::Block* block, bool* eos) {
     if (_limit != -1 and _num_rows_returned + block->rows() >= _limit) {
+        LOG(WARNING) << "scan node get full rows, _limit = " << _limit;
         block->set_num_rows(_limit - _num_rows_returned);
         *eos = true;
     }

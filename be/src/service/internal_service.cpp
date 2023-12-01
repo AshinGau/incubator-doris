@@ -1195,6 +1195,9 @@ void PInternalServiceImpl::_transmit_block(google::protobuf::RpcController* cont
         st = extract_st;
     }
     if (done != nullptr) {
+        if (!st.ok()) {
+            LOG(WARNING) << "_transmit_block: " << st.to_string();
+        }
         st.to_protobuf(response->mutable_status());
         done->Run();
     }

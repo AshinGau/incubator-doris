@@ -176,6 +176,7 @@ OrcReader::~OrcReader() {
     if (_obj_pool && _obj_pool.get()) {
         _obj_pool->clear();
     }
+    LOG(WARNING) << "orc file is released, path=" << _scan_range.path;
 }
 
 void OrcReader::_collect_profile_on_close() {

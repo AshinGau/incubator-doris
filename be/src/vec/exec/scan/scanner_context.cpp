@@ -205,6 +205,9 @@ void ScannerContext::append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& 
 
 bool ScannerContext::empty_in_queue(int id) {
     std::unique_lock l(_transfer_lock);
+    if (!_blocks_queue.empty()) {
+        LOG(WARNING) << ctx_id << ": not ScannerContext::empty_in_queue, can read";
+    }
     return _blocks_queue.empty();
 }
 
@@ -218,6 +221,7 @@ Status ScannerContext::get_block_from_queue(RuntimeState* state, vectorized::Blo
     // At this point, consumers are required to trigger new scheduling to ensure that
     // data can be continuously fetched.
     if (should_be_scheduled() && _num_running_scanners == 0) {
+        LOG(WARNING) << ctx_id << ": submit ctx: get_block_from_queue,num_running_scanners == 0";
         auto state = _scanner_scheduler->submit(this);
         if (state.ok()) {
             _num_scheduling_ctx++;
@@ -391,12 +395,14 @@ void ScannerContext::clear_and_join(Parent* parent, RuntimeState* state) {
         if (_num_running_scanners == 0 && _num_scheduling_ctx == 0) {
             break;
         } else {
+            LOG(WARNING) << "wait running scanners to finish";
             DCHECK(!state->enable_pipeline_exec())
                     << " _num_running_scanners: " << _num_running_scanners
                     << " _num_scheduling_ctx: " << _num_scheduling_ctx;
             while (!(_num_running_scanners == 0 && _num_scheduling_ctx == 0)) {
                 _ctx_finish_cv.wait(l);
             }
+            LOG(WARNING) << "Running scanners are finished";
             break;
         }
     } while (false);
@@ -413,7 +419,11 @@ void ScannerContext::clear_and_join(Parent* parent, RuntimeState* state) {
 
 bool ScannerContext::no_schedule() {
     std::unique_lock l(_transfer_lock);
-    return _num_running_scanners == 0 && _num_scheduling_ctx == 0;
+    bool rt = _num_running_scanners == 0 && _num_scheduling_ctx == 0;
+    if (rt) {
+        LOG(WARNING) << ctx_id << ": ScannerContext::no_schedule";
+    }
+    return rt;
 }
 
 std::string ScannerContext::debug_string() {
@@ -430,6 +440,7 @@ std::string ScannerContext::debug_string() {
 
 void ScannerContext::reschedule_scanner_ctx() {
     std::lock_guard l(_transfer_lock);
+    LOG(WARNING) << ctx_id << ": submit ctx: reschedule_scanner_ctx";
     auto state = _scanner_scheduler->submit(this);
     //todo(wb) rethinking is it better to mark current scan_context failed when submit failed many times?
     if (state.ok()) {
@@ -458,6 +469,7 @@ void ScannerContext::push_back_scanner_and_reschedule(VScannerSPtr scanner) {
     }
 
     if (should_be_scheduled()) {
+        LOG(WARNING) << ctx_id << ": submit ctx: push_back_scanner_and_reschedule";
         auto state = _scanner_scheduler->submit(this);
         if (state.ok()) {
             _num_scheduling_ctx++;
@@ -503,6 +515,7 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScannerSPtr>* current
             VScannerSPtr scanner = _scanners.front();
             _scanners.pop_front();
             if (scanner->need_to_close()) {
+                LOG(WARNING) << "eof reader is release in get_next_batch_of_scanners";
                 _finished_scanner_runtime.push_back(scanner->get_time_cost_ns());
                 _finished_scanner_rows_read.push_back(scanner->get_rows_read());
                 _finished_scanner_wait_worker_time.push_back(

@@ -152,6 +152,7 @@ Status ScannerScheduler::submit(ScannerContext* ctx) {
         return Status::EndOfFile("ScannerContext is done");
     }
     ctx->queue_idx = (_queue_idx++ % QUEUE_NUM);
+    LOG(WARNING) << ctx->ctx_id << ": ScannerScheduler::submit, queue_idx=" << ctx->queue_idx;
     if (!_pending_queues[ctx->queue_idx]->blocking_put(ctx)) {
         return Status::InternalError("failed to submit scanner context to scheduler");
     }
@@ -210,6 +211,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
         // So here we just return to stop scheduling ctx.
         return;
     }
+    LOG(WARNING) << ctx->ctx_id << ": get_next_batch_of_scanners = " << size;
 
     // Submit scanners to thread pool
     // TODO(cmy): How to handle this "nice"?
@@ -259,6 +261,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                         ret = _local_scan_thread_pool->offer(task);
                     }
                 } else {
+                    LOG(WARNING) << "_remote_scan_thread_pool->submit_func";
                     ret = _remote_scan_thread_pool->submit_func([this, scanner = *iter, ctx] {
                         this->_scanner_scan(this, ctx, scanner);
                     });
@@ -316,6 +319,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
 
 void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext* ctx,
                                      VScannerSPtr scanner) {
+    LOG(WARNING) << ctx->ctx_id << ": Start to ScannerScheduler::_scanner_scan get blocks";
     SCOPED_ATTACH_TASK(scanner->runtime_state());
     // for cpu hard limit, thread name should not be reset
 #if !defined(USE_BTHREAD_SCANNER)
@@ -382,9 +386,11 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
     while (!eos && raw_bytes_read < raw_bytes_threshold && raw_rows_read < raw_rows_threshold &&
            num_rows_in_block < state->batch_size()) {
         // TODO llj task group should should_yield?
+        LOG(WARNING) << ctx->ctx_id << ": begin to get one more block";
         if (UNLIKELY(ctx->done())) {
             // No need to set status on error here.
             // Because done() maybe caused by "should_stop"
+            LOG(WARNING) << ctx->ctx_id << ": ctx->done(), should stop scan block";
             should_stop = true;
             break;
         }
@@ -412,6 +418,9 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
 
         raw_bytes_read += block->allocated_bytes();
         num_rows_in_block += block->rows();
+        LOG(WARNING) << ctx->ctx_id << ": get one more block in _scanner_scan, raw_bytes_read="
+                     << raw_bytes_read << ", num_rows_in_block=" << num_rows_in_block
+                     << ", ctx_is_done=" << ctx->done();
         if (UNLIKELY(block->rows() == 0)) {
             ctx->return_free_block(std::move(block));
         } else {
@@ -438,11 +447,13 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
         // No need to return blocks because of should_stop, just delete them
         blocks.clear();
     } else if (!blocks.empty()) {
+        LOG(WARNING) << ctx->ctx_id << ": ctx->append_blocks_to_queue";
         ctx->append_blocks_to_queue(blocks);
     }
 
     scanner->update_scan_cpu_timer();
     if (eos || should_stop) {
+        LOG(WARNING) << "scanner is marked as eof";
         scanner->mark_to_need_to_close();
     }
     ctx->push_back_scanner_and_reschedule(scanner);

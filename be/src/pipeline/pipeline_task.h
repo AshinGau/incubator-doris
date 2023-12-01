@@ -139,6 +139,7 @@ public:
     virtual bool is_pending_finish() {
         bool source_ret = _source->is_pending_finish();
         if (source_ret) {
+            // LOG(WARNING) << "source ret is pending finish";
             return true;
         } else {
             this->set_src_pending_finish_time();
@@ -146,6 +147,7 @@ public:
 
         bool sink_ret = _sink->is_pending_finish();
         if (sink_ret) {
+            // LOG(WARNING) << "sink ret is pending finish";
             return true;
         } else {
             this->set_dst_pending_finish_time();
