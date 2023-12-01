@@ -197,6 +197,8 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
             if (_scanner_ctx) {
                 DCHECK(!_eos && _num_scanners->value() > 0);
                 RETURN_IF_ERROR(_scanner_ctx->init());
+                LOG(WARNING) << _scanner_ctx->ctx_id
+                             << ": submit ctx: VScanNode::alloc_resource with pipeline";
                 RETURN_IF_ERROR(
                         _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
             }
@@ -218,6 +220,7 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
                               : Status::OK());
         if (_scanner_ctx) {
             RETURN_IF_ERROR(_scanner_ctx->init());
+            LOG(WARNING) << _scanner_ctx->ctx_id << ": submit ctx: VScanNode::alloc_resource";
             RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
         }
     }

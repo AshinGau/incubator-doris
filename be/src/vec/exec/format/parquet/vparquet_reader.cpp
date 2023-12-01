@@ -111,6 +111,7 @@ ParquetReader::ParquetReader(const TFileScanRangeParams& params, const TFileRang
 
 ParquetReader::~ParquetReader() {
     _close_internal();
+    LOG(WARNING) << "parquet file is released, path=" << _scan_range.path;
 }
 
 void ParquetReader::_init_profile() {

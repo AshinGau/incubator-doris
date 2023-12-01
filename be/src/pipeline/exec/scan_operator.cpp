@@ -171,6 +171,7 @@ Status ScanLocalState<Derived>::open(RuntimeState* state) {
         _finish_dependency->block();
         DCHECK(!_eos && _num_scanners->value() > 0);
         RETURN_IF_ERROR(_scanner_ctx->init());
+        LOG(WARNING) << _scanner_ctx->ctx_id << ": submit ctx: ScanLocalState<Derived>::open";
         RETURN_IF_ERROR(state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
     }
     _opened = true;
