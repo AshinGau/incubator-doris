@@ -114,6 +114,7 @@ void ORCFileInputStream::read(void* buf, uint64_t length, uint64_t offset) {
     char* out = reinterpret_cast<char*>(buf);
     while (has_read < length) {
         if (UNLIKELY(_io_ctx && _io_ctx->should_stop)) {
+            LOG(WARNING) << "stop in ORCFileInputStream::read";
             throw orc::ParseError("stop");
         }
         size_t loop_read;
@@ -251,6 +252,7 @@ Status OrcReader::_create_file_reader() {
         // so we need distinguish between it and other kinds of errors
         std::string _err_msg = e.what();
         if (_io_ctx && _io_ctx->should_stop && _err_msg == "stop") {
+            LOG(WARNING) << "OrcReader::_create_file_reader";
             return Status::EndOfFile("stop");
         }
         if (_err_msg.find("No such file or directory") != std::string::npos) {
@@ -816,6 +818,8 @@ Status OrcReader::set_fill_columns(
         // ignore stop exception
         if (!(_io_ctx && _io_ctx->should_stop && _err_msg == "stop")) {
             return Status::InternalError("Failed to create orc row reader. reason = {}", _err_msg);
+        } else {
+            LOG(WARNING) << "stop in OrcReader::set_fill_columns";
         }
     }
 
@@ -1439,6 +1443,7 @@ Status OrcReader::get_next_block(Block* block, size_t* read_rows, bool* eof) {
             } catch (std::exception& e) {
                 std::string _err_msg = e.what();
                 if (_io_ctx && _io_ctx->should_stop && _err_msg == "stop") {
+                    LOG(WARNING) << "stop in OrcReader::get_next_block lazy";
                     block->clear_column_data();
                     *eof = true;
                     *read_rows = 0;
@@ -1505,6 +1510,7 @@ Status OrcReader::get_next_block(Block* block, size_t* read_rows, bool* eof) {
             } catch (std::exception& e) {
                 std::string _err_msg = e.what();
                 if (_io_ctx && _io_ctx->should_stop && _err_msg == "stop") {
+                    LOG(WARNING) << "stop in OrcReader::get_next_block no lazy";
                     block->clear_column_data();
                     *eof = true;
                     *read_rows = 0;

@@ -62,6 +62,7 @@ Status PageReader::next_page_header() {
     uint32_t real_header_size = 0;
     while (true) {
         if (UNLIKELY(_io_ctx && _io_ctx->should_stop)) {
+            LOG(WARNING) << "stop in next_page_header";
             return Status::EndOfFile("stop");
         }
         header_size = std::min(header_size, max_size);
@@ -102,6 +103,7 @@ Status PageReader::get_page_data(Slice& slice) {
         return Status::IOError("Should generate page header first to load current page data");
     }
     if (UNLIKELY(_io_ctx && _io_ctx->should_stop)) {
+        LOG(WARNING) << "stop in get_page_data";
         return Status::EndOfFile("stop");
     }
     slice.size = _cur_page_header.compressed_page_size;

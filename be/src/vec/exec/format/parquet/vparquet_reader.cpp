@@ -223,6 +223,7 @@ void ParquetReader::_close_internal() {
 
 Status ParquetReader::_open_file() {
     if (UNLIKELY(_io_ctx && _io_ctx->should_stop)) {
+        LOG(WARNING) << "stop in _open_file";
         return Status::EndOfFile("stop");
     }
     if (_file_reader == nullptr) {
@@ -748,6 +749,7 @@ bool ParquetReader::_has_page_index(const std::vector<tparquet::ColumnChunk>& co
 Status ParquetReader::_process_page_index(const tparquet::RowGroup& row_group,
                                           std::vector<RowRange>& candidate_row_ranges) {
     if (UNLIKELY(_io_ctx && _io_ctx->should_stop)) {
+        LOG(WARNING) << "stop in _process_page_index";
         return Status::EndOfFile("stop");
     }
     SCOPED_RAW_TIMER(&_statistics.page_index_filter_time);
