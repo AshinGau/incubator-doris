@@ -223,7 +223,7 @@ protected:
     ScannerCounter _counter;
     int64_t _per_scanner_timer = 0;
 
-    bool _should_stop = false;
+    std::atomic_bool _should_stop = false;
 };
 
 using VScannerSPtr = std::shared_ptr<VScanner>;
