@@ -76,10 +76,15 @@ ScannerContext::ScannerContext(doris::RuntimeState* state_, doris::vectorized::V
     _max_thread_num = _max_thread_num == 0 ? 1 : _max_thread_num;
     DCHECK(_max_thread_num > 0);
     _max_thread_num = std::min(_max_thread_num, (int32_t)_scanners.size());
+    LOG(WARNING) << "doris_scanner_thread_pool_thread_num="
+                 << config::doris_scanner_thread_pool_thread_num
+                 << ", num_parallel_instances=" << num_parallel_instances
+                 << ", _scanners.size=" << _scanners.size();
     // 1. Calculate max concurrency
     // For select * from table limit 10; should just use one thread.
     if ((_parent && _parent->should_run_serial()) ||
         (_local_state && _local_state->should_run_serial())) {
+        LOG(WARNING) << "reset _max_thread_num = 1";
         _max_thread_num = 1;
     }
 }
@@ -122,6 +127,11 @@ Status ScannerContext::init() {
     auto block = get_free_block();
     _estimated_block_bytes = std::max(block->allocated_bytes(), (size_t)16);
     return_free_block(std::move(block));
+    LOG(WARNING) << "_block_per_scanner=" << _block_per_scanner
+                 << ", _max_thread_num=" << _max_thread_num
+                 << ", _free_blocks_capacity=" << _free_blocks_capacity
+                 << ", _max_bytes_in_queue=" << _max_bytes_in_queue
+                 << ", _estimated_block_bytes=" << _estimated_block_bytes;
 
 #ifndef BE_TEST
     // 3. get thread token
