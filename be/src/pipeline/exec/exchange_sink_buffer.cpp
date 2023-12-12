@@ -333,6 +333,10 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
                                              const int64_t& start_rpc_time) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s(Status::create(result.status()));
+            LOG(WARNING) << "_send_rpc broadcast package: " << result.status().status_code();
+            if (result.status().error_msgs_size() > 0) {
+                LOG(WARNING) << "_send_rpc broadcast package: " << result.status().error_msgs(0);
+            }
             if (s.is<ErrorCode::END_OF_FILE>()) {
                 LOG(WARNING) << "_send_rpc broadcast package: s.is<ErrorCode::END_OF_FILE>()";
                 _set_receiver_eof(id);
