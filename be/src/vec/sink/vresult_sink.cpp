@@ -158,6 +158,7 @@ Status VResultSink::close(RuntimeState* state, Status exec_status) {
     Status final_status = exec_status;
 
     if (_writer) {
+        LOG(WARNING) << "VResultSink::close _writer";
         // close the writer
         Status st = _writer->close();
         if (!st.ok() && exec_status.ok()) {
@@ -168,6 +169,7 @@ Status VResultSink::close(RuntimeState* state, Status exec_status) {
 
     // close sender, this is normal path end
     if (_sender) {
+        LOG(WARNING) << "VResultSink::close _sender";
         if (_writer) {
             _sender->update_num_written_rows(_writer->get_written_rows());
         }
