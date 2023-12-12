@@ -526,16 +526,22 @@ Status VDataStreamSender::send(RuntimeState* state, Block* block, bool eos) {
         // 2. send block
         // 3. rollover block
         if (_only_local_exchange) {
+            LOG(WARNING) << "VDataStreamSender::send: _only_local_exchange";
             if (!block->empty()) {
                 Status status;
                 for (auto channel : _channels) {
                     if (!channel->is_receiver_eof()) {
                         status = channel->send_local_block(block);
+                        if (status.is<ErrorCode::END_OF_FILE>()) {
+                            LOG(WARNING) << "VDataStreamSender::send: _only_local_exchange: "
+                                         << status.to_string();
+                        }
                         HANDLE_CHANNEL_STATUS(state, channel, status);
                     }
                 }
             }
         } else if (_enable_pipeline_exec) {
+            LOG(WARNING) << "VDataStreamSender::send: _enable_pipeline_exec";
             BroadcastPBlockHolder* block_holder = nullptr;
             RETURN_IF_ERROR(_get_next_available_buffer(&block_holder));
             {
@@ -558,9 +564,17 @@ Status VDataStreamSender::send(RuntimeState* state, Block* block, bool eos) {
                             if (channel->is_local()) {
                                 block_holder->unref();
                                 status = channel->send_local_block(&cur_block);
+                                if (status.is<ErrorCode::END_OF_FILE>()) {
+                                    LOG(WARNING) << "VDataStreamSender::send: _enable_pipeline_exec local:"
+                                                 << status.to_string();
+                                }
                             } else {
                                 SCOPED_CONSUME_MEM_TRACKER(_mem_tracker.get());
                                 status = channel->send_broadcast_block(block_holder, eos);
+                                if (status.is<ErrorCode::END_OF_FILE>()) {
+                                    LOG(WARNING) << "VDataStreamSender::send: _enable_pipeline_exec broadcast:"
+                                                 << status.to_string();
+                                }
                             }
                             HANDLE_CHANNEL_STATUS(state, channel, status);
                         } else {
@@ -572,6 +586,7 @@ Status VDataStreamSender::send(RuntimeState* state, Block* block, bool eos) {
                 }
             }
         } else {
+            LOG(WARNING) << "VDataStreamSender::send: else";
             SCOPED_CONSUME_MEM_TRACKER(_mem_tracker.get());
             bool serialized = false;
             RETURN_IF_ERROR(_serializer.next_serialized_block(
