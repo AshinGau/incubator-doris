@@ -259,6 +259,7 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
                                              const PTransmitDataResult& result,
                                              const int64_t& start_rpc_time) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
+            LOG(WARNING) << "send_callback->addSuccessHandler: " << result.status().status_code();
             Status s(Status::create(result.status()));
             if (!s.ok()) {
                 LOG(WARNING) << "addSuccessHandler: _set_receiver_eof: " << s.to_string();
