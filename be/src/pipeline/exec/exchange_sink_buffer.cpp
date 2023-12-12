@@ -226,8 +226,9 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
         _set_ready_to_finish(_busy_channels.fetch_sub(1) == 1);
         return Status::OK();
     }
-
+    LOG(WARNING) << "begin to _send_rpc";
     if (!q.empty()) {
+        LOG(WARNING) << "_send_rpc package";
         // If we have data to shuffle which is not broadcasted
         auto& request = q.front();
         auto& brpc_request = _instance_to_request[id];
@@ -259,7 +260,6 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
                                              const PTransmitDataResult& result,
                                              const int64_t& start_rpc_time) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
-            LOG(WARNING) << "send_callback->addSuccessHandler: " << result.status().status_code();
             Status s(Status::create(result.status()));
             if (!s.ok()) {
                 LOG(WARNING) << "addSuccessHandler: _set_receiver_eof: " << s.to_string();
@@ -300,6 +300,7 @@ Status ExchangeSinkBuffer<Parent>::_send_rpc(InstanceLoId id) {
             _queue_dependency->set_ready();
         }
     } else if (!broadcast_q.empty()) {
+        LOG(WARNING) << "_send_rpc broadcast package";
         // If we have data to shuffle which is broadcasted
         auto& request = broadcast_q.front();
         auto& brpc_request = _instance_to_request[id];
