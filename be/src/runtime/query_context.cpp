@@ -83,6 +83,7 @@ bool QueryContext::cancel(bool v, std::string msg, Status new_status, int fragme
     if (_is_cancelled) {
         return false;
     }
+    LOG(WARNING) << "QueryContext::cancel stacktrace:\n" << get_stack_trace_by_boost();
     set_exec_status(new_status);
     _is_cancelled.store(v);
 
