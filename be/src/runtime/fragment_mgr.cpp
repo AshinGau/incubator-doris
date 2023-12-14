@@ -1036,8 +1036,12 @@ void FragmentMgr::cancel_instance_unlocked(const TUniqueId& instance_id,
         auto itr = _pipeline_map.find(instance_id);
 
         if (itr != _pipeline_map.end()) {
-            // calling PipelineFragmentContext::cancel
-            itr->second->cancel(reason, msg);
+            if (reason == PPlanFragmentCancelReason::LIMIT_REACH) {
+                itr->second->set_reach_limit();
+            } else {
+                // calling PipelineFragmentContext::cancel
+                itr->second->cancel(reason, msg);
+            }
         } else {
             LOG(WARNING) << "Could not find the pipeline instance id:" << print_id(instance_id)
                          << " to cancel";
@@ -1045,8 +1049,12 @@ void FragmentMgr::cancel_instance_unlocked(const TUniqueId& instance_id,
     } else {
         auto itr = _fragment_instance_map.find(instance_id);
         if (itr != _fragment_instance_map.end()) {
-            // calling PlanFragmentExecutor::cancel
-            itr->second->cancel(reason, msg);
+            if (reason == PPlanFragmentCancelReason::LIMIT_REACH) {
+                itr->second->set_reach_limit();
+            } else {
+                // calling PlanFragmentExecutor::cancel
+                itr->second->cancel(reason, msg);
+            }
         } else {
             LOG(WARNING) << "Could not find the fragment instance id:" << print_id(instance_id)
                          << " to cancel";

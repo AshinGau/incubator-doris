@@ -297,7 +297,11 @@ void TaskScheduler::_do_work(size_t index) {
         try {
             LOG(WARNING) << uid.hi << uid.lo
                          << ": start to execute task, index = " << index;
-            status = task->execute(&eos);
+            if (task->query_context()->reach_limit()) {
+                eos = true;
+            } else {
+                status = task->execute(&eos);
+            }
             LOG(WARNING) << uid.hi << uid.lo
                          << ": end to execute task, index = " << index << ", eos = " << eos;
         } catch (const Exception& e) {

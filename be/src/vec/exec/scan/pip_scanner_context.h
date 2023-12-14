@@ -66,7 +66,7 @@ public:
         {
             std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
             if (_blocks_queues[id].empty()) {
-                *eos = _is_finished || _should_stop;
+                *eos = done();
                 return Status::OK();
             }
             if (_process_status.is<ErrorCode::CANCELLED>()) {
