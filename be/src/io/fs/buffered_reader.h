@@ -131,8 +131,8 @@ public:
     static constexpr size_t READ_SLICE_SIZE = 8 * 1024 * 1024;      // 8MB
     static constexpr size_t BOX_SIZE = 1 * 1024 * 1024;             // 1MB
     static constexpr size_t SMALL_IO = 2 * 1024 * 1024;             // 2MB
-    static constexpr size_t HDFS_MIN_IO_SIZE = 4 * 1024;            // 4KB
-    static constexpr size_t OSS_MIN_IO_SIZE = 512 * 1024;           // 512KB
+    static constexpr size_t HDFS_MIN_IO_SIZE = 8 * 1024;            // 8KB
+    static constexpr size_t OSS_MIN_IO_SIZE = 1 * 1024 * 1024;      // 1MB
     static constexpr size_t NUM_BOX = TOTAL_BUFFER_SIZE / BOX_SIZE; // 128
 
     MergeRangeFileReader(RuntimeProfile* profile, io::FileReaderSPtr reader,
