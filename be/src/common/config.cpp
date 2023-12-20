@@ -238,8 +238,12 @@ DEFINE_mInt64(doris_blocking_priority_queue_wait_timeout_ms, "500");
 // and the min thread num of remote scanner thread pool
 DEFINE_Int32(doris_scanner_thread_pool_thread_num, "-1");
 DEFINE_Validator(doris_scanner_thread_pool_thread_num, [](const int config) -> bool {
+    LOG(WARNING) << "doris_scanner_thread_pool_thread_num=" << doris_scanner_thread_pool_thread_num;
     if (config == -1) {
         doris_scanner_thread_pool_thread_num = std::max(48, CpuInfo::num_cores() * 4);
+        LOG(WARNING) << "doris_scanner_thread_pool_thread_num="
+                     << doris_scanner_thread_pool_thread_num
+                     << ", CpuInfo::num_cores()=" << CpuInfo::num_cores();
     }
     return true;
 });

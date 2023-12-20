@@ -77,6 +77,8 @@ ScannerContext::ScannerContext(RuntimeState* state, const TupleDescriptor* outpu
     if (limit < 0) {
         limit = -1;
     }
+    LOG(WARNING) << "thread_num=" << config::doris_scanner_thread_pool_thread_num
+                 << ", _scanners.size=" << _scanners.size();
     _max_thread_num = config::doris_scanner_thread_pool_thread_num / 4;
     _max_thread_num *= num_parallel_instances;
     _max_thread_num = _max_thread_num == 0 ? 1 : _max_thread_num;
