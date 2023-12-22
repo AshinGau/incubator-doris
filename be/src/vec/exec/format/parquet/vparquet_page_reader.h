@@ -45,6 +45,11 @@ public:
                uint64_t length);
     ~PageReader() = default;
 
+    // Deprecated
+    // Parquet file may not be standardized,
+    // _end_offset may exceed the actual data area.
+    // ColumnChunkReader::has_next_page() use the number of parsed values for judgment
+    // [[deprecated]]
     bool has_next_page() const { return _offset < _end_offset; }
 
     Status next_page_header();
@@ -57,6 +62,9 @@ public:
 
     Statistics& statistics() { return _statistics; }
 
+    // Deprecated
+    // _end_offset may exceed the actual data area.
+    // [[deprecated]]
     void seek_to_page(int64_t page_header_offset) {
         _offset = page_header_offset;
         _next_header_offset = page_header_offset;
