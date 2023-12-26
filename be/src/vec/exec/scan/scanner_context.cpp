@@ -238,9 +238,13 @@ void ScannerContext::return_free_block(std::unique_ptr<vectorized::Block> block)
 }
 
 void ScannerContext::append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& blocks) {
-    std::lock_guard l(_transfer_lock);
+    std::unique_lock l(_transfer_lock);
     auto old_bytes_in_queue = _cur_bytes_in_queue;
     for (auto& b : blocks) {
+        while (!done() && _cur_bytes_in_queue >= config::doris_scanner_row_bytes) {
+            LOG(WARNING) << "_cur_bytes_in_queue=" << _cur_bytes_in_queue;
+            _blocks_queue_added_cv.wait_for(l, 1s);
+        }
         auto st = validate_block_schema(b.get());
         if (!st.ok()) {
             set_status_on_error(st, false);
@@ -334,6 +338,9 @@ Status ScannerContext::get_block_from_queue(RuntimeState* state, vectorized::Blo
         } else {
             *eos = _is_finished;
         }
+        if (_cur_bytes_in_queue < config::doris_scanner_row_bytes) {
+            _blocks_queue_added_cv.notify_one();
+        }
     }
 
     if (!merge_blocks.empty()) {
@@ -382,7 +389,7 @@ void ScannerContext::set_should_stop() {
             sc->try_stop();
         }
     }
-    _blocks_queue_added_cv.notify_one();
+    _blocks_queue_added_cv.notify_all();
     set_ready_to_finish();
 }
 
@@ -416,7 +423,7 @@ bool ScannerContext::set_status_on_error(const Status& status, bool need_lock) {
     if (this->status().ok()) {
         _process_status = status;
         _status_error = true;
-        _blocks_queue_added_cv.notify_one();
+        _blocks_queue_added_cv.notify_all();
         _should_stop = true;
         _set_scanner_done();
         return true;
