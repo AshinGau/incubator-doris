@@ -154,6 +154,10 @@ public:
     int get_available_thread_slot_num() {
         int thread_slot_num = 0;
         thread_slot_num = (allowed_blocks_num() + _block_per_scanner - 1) / _block_per_scanner;
+        LOG(WARNING) << "thread_slot_num=" << thread_slot_num
+                     << ", _block_per_scanner=" << _block_per_scanner
+                     << ", _max_thread_num=" << _max_thread_num
+                     << ", _num_running_scanners=" << _num_running_scanners;
         thread_slot_num = std::min(thread_slot_num, _max_thread_num - _num_running_scanners);
         if (thread_slot_num <= 0) {
             thread_slot_num = 1;
@@ -165,6 +169,10 @@ public:
         int32_t blocks_num = std::min(_free_blocks_capacity,
                                       int32_t((_max_bytes_in_queue + _estimated_block_bytes - 1) /
                                               _estimated_block_bytes));
+        LOG(WARNING) << "allowed_blocks_num=" << blocks_num
+                     << ", _free_blocks_capacity=" << _free_blocks_capacity
+                     << ", _max_bytes_in_queue=" << _max_bytes_in_queue
+                     << ", _estimated_block_bytes=" << _estimated_block_bytes;
         return blocks_num;
     }
 

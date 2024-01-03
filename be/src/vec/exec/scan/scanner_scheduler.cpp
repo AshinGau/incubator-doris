@@ -159,6 +159,7 @@ void ScannerScheduler::_schedule_thread(int queue_id) {
     BlockingQueue<std::shared_ptr<ScannerContext>>* queue = _pending_queues[queue_id];
     while (!_is_closed) {
         std::shared_ptr<ScannerContext> ctx;
+        LOG(WARNING) << "submitted scanner context=" << queue->get_size();
         bool ok = queue->blocking_get(&ctx);
         if (!ok) {
             // maybe closed
@@ -251,6 +252,9 @@ void ScannerScheduler::_schedule_scanners(std::shared_ptr<ScannerContext> ctx) {
                 };
                 task.priority = nice;
                 ret = _remote_scan_thread_pool->offer(task);
+                LOG(WARNING) << "_remote_scan_thread_pool offset task, size="
+                             << _remote_scan_thread_pool->get_queue_size()
+                             << ", active=" << _remote_scan_thread_pool->get_active_threads();
             }
             if (ret) {
                 this_run.erase(iter++);
@@ -387,6 +391,9 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler,
         raw_rows_read = scanner->get_rows_read();
     } // end for while
 
+    LOG(WARNING) << "_scanner_scan blocks, thread size="
+                 << _remote_scan_thread_pool->get_queue_size()
+                 << ", active thread=" << _remote_scan_thread_pool->get_active_threads();
     // if we failed, check status.
     if (UNLIKELY(!status.ok())) {
         // _transfer_done = true;

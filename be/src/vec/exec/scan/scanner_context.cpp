@@ -133,6 +133,10 @@ ScannerContext::ScannerContext(doris::RuntimeState* state, doris::vectorized::VS
     }
     _max_thread_num = config::doris_scanner_thread_pool_thread_num / 4;
     _max_thread_num *= num_parallel_instances;
+    LOG(WARNING) << "doris_scanner_thread_pool_thread_num="
+                 << config::doris_scanner_thread_pool_thread_num
+                 << ", num_parallel_instances=" << num_parallel_instances
+                 << ", _max_thread_num=" << _max_thread_num;
     _max_thread_num = _max_thread_num == 0 ? 1 : _max_thread_num;
     DCHECK(_max_thread_num > 0);
     _max_thread_num = std::min(_max_thread_num, (int32_t)_scanners.size());
@@ -600,6 +604,8 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScannerSPtr>* current
     // and put them into "this_run".
     {
         std::unique_lock l(_scanners_lock);
+        LOG(WARNING) << "thread_slot_num=" << thread_slot_num
+                     << ", _scanners.size()=" << _scanners.size();
         for (int i = 0; i < thread_slot_num && !_scanners.empty();) {
             VScannerSPtr scanner = _scanners.front();
             _scanners.pop_front();
