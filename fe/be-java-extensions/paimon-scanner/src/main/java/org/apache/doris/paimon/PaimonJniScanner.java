@@ -125,6 +125,7 @@ public class PaimonJniScanner extends JniScanner {
                     DataType dataType = table.rowType().getTypeAt(index);
                     if (dataType instanceof TimestampType) {
                         types[i].setPrecision(((TimestampType) dataType).getPrecision());
+                        LOG.warn("reset datetime precision=" + ((TimestampType) dataType).getPrecision());
                     }
                 }
             }
