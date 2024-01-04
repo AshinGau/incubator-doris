@@ -258,6 +258,9 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                     };
                     task.priority = nice;
                     ret = _remote_scan_thread_pool->offer(task);
+                    LOG(WARNING) << "_remote_scan_thread_pool offset task, size="
+                                 << _remote_scan_thread_pool->get_queue_size()
+                                 << ", active=" << _remote_scan_thread_pool->get_active_threads();
                 }
                 if (ret) {
                     this_run.erase(iter++);
@@ -422,6 +425,9 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
         raw_rows_read = scanner->get_rows_read();
     } // end for while
 
+    LOG(WARNING) << "_scanner_scan blocks, thread size="
+                 << _remote_scan_thread_pool->get_queue_size()
+                 << ", active thread=" << _remote_scan_thread_pool->get_active_threads();
     // if we failed, check status.
     if (UNLIKELY(!status.ok())) {
         // _transfer_done = true;

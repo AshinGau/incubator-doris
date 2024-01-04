@@ -82,6 +82,10 @@ Status ScannerContext::init() {
     if (_parent->should_run_serial()) {
         _max_thread_num = 1;
     }
+    LOG(WARNING) << "doris_scanner_thread_pool_thread_num="
+                 << config::doris_scanner_thread_pool_thread_num
+                 << ", _num_parallel_instances=" << _num_parallel_instances
+                 << ", _max_thread_num=" << _max_thread_num;
 
     _scanner_profile = _parent->_scanner_profile;
     _scanner_sched_counter = _parent->_scanner_sched_counter;
@@ -404,6 +408,8 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScannerSPtr>* current
     // and put them into "this_run".
     {
         std::unique_lock l(_scanners_lock);
+        LOG(WARNING) << "thread_slot_num=" << thread_slot_num
+                     << ", _scanners.size()=" << _scanners.size();
         for (int i = 0; i < thread_slot_num && !_scanners.empty();) {
             VScannerSPtr scanner = _scanners.front();
             _scanners.pop_front();

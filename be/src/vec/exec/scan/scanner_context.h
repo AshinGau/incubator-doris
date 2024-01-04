@@ -148,6 +148,11 @@ public:
         int thread_slot_num = 0;
         thread_slot_num = (_free_blocks_capacity + _block_per_scanner - 1) / _block_per_scanner;
         thread_slot_num = std::min(thread_slot_num, _max_thread_num - _num_running_scanners);
+        LOG(WARNING) << "thread_slot_num=" << thread_slot_num
+                     << ", _free_blocks_capacity=" << _free_blocks_capacity
+                     << ", _block_per_scanner=" << _block_per_scanner
+                     << ", _max_thread_num=" << _max_thread_num
+                     << ", _num_running_scanners=" << _num_running_scanners;
         if (thread_slot_num <= 0) {
             thread_slot_num = 1;
         }
