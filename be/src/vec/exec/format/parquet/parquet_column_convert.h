@@ -72,7 +72,7 @@ struct ConvertParams {
         const auto& schema = field_schema->parquet_schema;
         if (schema.__isset.logicalType && schema.logicalType.__isset.TIMESTAMP) {
             const auto& timestamp_info = schema.logicalType.TIMESTAMP;
-            if (!timestamp_info.isAdjustedToUTC) {
+            if (timestamp_info.isAdjustedToUTC) {
                 // should set timezone to utc+0
                 ctz = const_cast<cctz::time_zone*>(&utc0);
             }
