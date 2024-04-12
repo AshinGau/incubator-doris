@@ -60,6 +60,7 @@ Status NewFileScanNode::prepare(RuntimeState* state) {
 
 void NewFileScanNode::set_scan_ranges(RuntimeState* state,
                                       const std::vector<TScanRangeParams>& scan_ranges) {
+    LOG(WARNING) << "Get scan ranges: " << GetCurrentTimeMicros();
     int max_scanners =
             config::doris_scanner_thread_pool_thread_num / state->query_parallel_instance_num();
     max_scanners = std::max(std::max(max_scanners, state->parallel_scan_max_scanners_count()), 1);
@@ -108,6 +109,7 @@ void NewFileScanNode::set_scan_ranges(RuntimeState* state,
         _output_tuple_id =
                 scan_ranges[0].scan_range.ext_scan_range.file_scan_range.params.dest_tuple_id;
     }
+    LOG(WARNING) << "Set scan ranges: " << GetCurrentTimeMicros();
 }
 
 Status NewFileScanNode::_init_profile() {

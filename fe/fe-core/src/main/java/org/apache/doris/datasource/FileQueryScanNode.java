@@ -268,7 +268,9 @@ public abstract class FileQueryScanNode extends FileScanNode {
         if (ConnectContext.get().getExecutor() != null) {
             ConnectContext.get().getExecutor().getSummaryProfile().setGetSplitsStartTime();
         }
+        LOG.warn("Start to get splits: " + System.currentTimeMillis());
         List<Split> inputSplits = getSplits();
+        LOG.warn("End to get splits: " + System.currentTimeMillis());
         if (ConnectContext.get().getExecutor() != null) {
             ConnectContext.get().getExecutor().getSummaryProfile().setGetSplitsFinishTime();
         }
@@ -393,6 +395,7 @@ public abstract class FileQueryScanNode extends FileScanNode {
             LOG.debug("create #{} ScanRangeLocations cost: {} ms",
                     scanRangeLocations.size(), (System.currentTimeMillis() - start));
         }
+        LOG.warn("End to create scan ranges: " + System.currentTimeMillis());
     }
 
     private void setLocationPropertiesIfNecessary(Backend selectedBackend, TFileType locationType,
