@@ -321,6 +321,7 @@ public abstract class FileQueryScanNode extends FileScanNode {
         List<String> pathPartitionKeys = getPathPartitionKeys();
 
         Multimap<Backend, Split> assignment =  backendPolicy.computeScanRangeAssignment(inputSplits);
+        LOG.warn("End to assign splits: " + System.currentTimeMillis());
         for (Backend backend : assignment.keySet()) {
             Collection<Split> splits = assignment.get(backend);
             for (Split split : splits) {
