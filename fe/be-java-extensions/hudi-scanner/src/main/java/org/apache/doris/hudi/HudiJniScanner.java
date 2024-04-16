@@ -187,6 +187,7 @@ public class HudiJniScanner extends JniScanner {
         try {
             avroFuture.get();
         } catch (Exception e) {
+            LOG.error("Failed to open hudi scanner, split params:\n" + debugString, e);
             throw new IOException(e.getMessage(), e);
         }
     }
