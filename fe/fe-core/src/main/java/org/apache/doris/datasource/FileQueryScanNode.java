@@ -29,6 +29,7 @@ import org.apache.doris.catalog.FunctionGenTable;
 import org.apache.doris.catalog.HdfsResource;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.common.Config;
 import org.apache.doris.common.NotImplementedException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.BrokerUtil;
@@ -60,6 +61,7 @@ import org.apache.doris.thrift.TNetworkAddress;
 import org.apache.doris.thrift.TScanRange;
 import org.apache.doris.thrift.TScanRangeLocation;
 import org.apache.doris.thrift.TScanRangeLocations;
+import org.apache.doris.thrift.TSplitSource;
 import org.apache.doris.thrift.TTableFormatFileDesc;
 import org.apache.doris.thrift.TTextSerdeType;
 import org.apache.doris.thrift.TTransactionalHiveDeleteDeltaDesc;
@@ -319,70 +321,43 @@ public abstract class FileQueryScanNode extends FileScanNode {
         List<String> pathPartitionKeys = getPathPartitionKeys();
 
         Multimap<Backend, Split> assignment =  backendPolicy.computeScanRangeAssignment(inputSplits);
+        int batchModeSize = Config.num_splits_in_batch_mode;
         for (Backend backend : assignment.keySet()) {
             Collection<Split> splits = assignment.get(backend);
-            for (Split split : splits) {
-                FileSplit fileSplit = (FileSplit) split;
+            if (batchModeSize > 0 && splits.size() > batchModeSize) {
+                SplitSource splitSource = new SplitSource(
+                        this::splitToScanRange, backend, locationProperties, splits, pathPartitionKeys);
+                splitSources.add(splitSource);
+                SplitSourceManager.registerSplitSource(splitSource);
+                TScanRangeLocations curLocations = newLocations();
+                TSplitSource tSource = new TSplitSource();
+                tSource.setSplitSourceId(splitSource.getUniqueId());
+                tSource.setNumSplits(splits.size());
+                tSource.setLastBatch(false);
+                curLocations.getScanRange().getExtScanRange().getFileScanRange().setSplitSource(tSource);
+                TScanRangeLocation location = new TScanRangeLocation();
+                location.setBackendId(backend.getId());
+                location.setServer(new TNetworkAddress(backend.getHost(), backend.getBePort()));
+                curLocations.addToLocations(location);
+                scanRangeLocations.add(curLocations);
+
                 TFileType locationType;
+                FileSplit fileSplit = (FileSplit) splits.iterator().next();
                 if (fileSplit instanceof IcebergSplit
                         && ((IcebergSplit) fileSplit).getConfig().containsKey(HMSExternalCatalog.BIND_BROKER_NAME)) {
                     locationType = TFileType.FILE_BROKER;
                 } else {
                     locationType = getLocationType(fileSplit.getPath().toString());
                 }
-
-                TScanRangeLocations curLocations = newLocations();
-                // If fileSplit has partition values, use the values collected from hive partitions.
-                // Otherwise, use the values in file path.
-                boolean isACID = false;
-                if (fileSplit instanceof HiveSplit) {
-                    HiveSplit hiveSplit = (HiveSplit) fileSplit;
-                    isACID = hiveSplit.isACID();
-                }
-                List<String> partitionValuesFromPath = fileSplit.getPartitionValues() == null
-                        ? BrokerUtil.parseColumnsFromPath(fileSplit.getPath().toString(), pathPartitionKeys,
-                        false, isACID) : fileSplit.getPartitionValues();
-
-                TFileRangeDesc rangeDesc = createFileRangeDesc(fileSplit, partitionValuesFromPath, pathPartitionKeys,
-                        locationType);
-                TFileCompressType fileCompressType = getFileCompressType(fileSplit);
-                rangeDesc.setCompressType(fileCompressType);
-                if (isACID) {
-                    HiveSplit hiveSplit = (HiveSplit) fileSplit;
-                    hiveSplit.setTableFormatType(TableFormatType.TRANSACTIONAL_HIVE);
-                    TTableFormatFileDesc tableFormatFileDesc = new TTableFormatFileDesc();
-                    tableFormatFileDesc.setTableFormatType(hiveSplit.getTableFormatType().value());
-                    AcidInfo acidInfo = (AcidInfo) hiveSplit.getInfo();
-                    TTransactionalHiveDesc transactionalHiveDesc = new TTransactionalHiveDesc();
-                    transactionalHiveDesc.setPartition(acidInfo.getPartitionLocation());
-                    List<TTransactionalHiveDeleteDeltaDesc> deleteDeltaDescs = new ArrayList<>();
-                    for (DeleteDeltaInfo deleteDeltaInfo : acidInfo.getDeleteDeltas()) {
-                        TTransactionalHiveDeleteDeltaDesc deleteDeltaDesc = new TTransactionalHiveDeleteDeltaDesc();
-                        deleteDeltaDesc.setDirectoryLocation(deleteDeltaInfo.getDirectoryLocation());
-                        deleteDeltaDesc.setFileNames(deleteDeltaInfo.getFileNames());
-                        deleteDeltaDescs.add(deleteDeltaDesc);
-                    }
-                    transactionalHiveDesc.setDeleteDeltas(deleteDeltaDescs);
-                    tableFormatFileDesc.setTransactionalHiveParams(transactionalHiveDesc);
-                    rangeDesc.setTableFormatParams(tableFormatFileDesc);
-                }
-
-                setScanParams(rangeDesc, fileSplit);
-
-                curLocations.getScanRange().getExtScanRange().getFileScanRange().addToRanges(rangeDesc);
-                TScanRangeLocation location = new TScanRangeLocation();
                 setLocationPropertiesIfNecessary(backend, locationType, locationProperties);
-                location.setBackendId(backend.getId());
-                location.setServer(new TNetworkAddress(backend.getHost(), backend.getBePort()));
-                curLocations.addToLocations(location);
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("assign to backend {} with table split: {} ({}, {}), location: {}",
-                            curLocations.getLocations().get(0).getBackendId(), fileSplit.getPath(),
-                            fileSplit.getStart(), fileSplit.getLength(),
-                            Joiner.on("|").join(fileSplit.getHosts()));
+                for (Split split : splits) {
+                    totalFileSize += split.getLength();
                 }
-                scanRangeLocations.add(curLocations);
-                this.totalFileSize += fileSplit.getLength();
+            } else {
+                for (Split split : splits) {
+                    scanRangeLocations.add(splitToScanRange(backend, locationProperties, split, pathPartitionKeys));
+                    totalFileSize += split.getLength();
+                }
             }
         }
 
@@ -393,6 +368,66 @@ public abstract class FileQueryScanNode extends FileScanNode {
             LOG.debug("create #{} ScanRangeLocations cost: {} ms",
                     scanRangeLocations.size(), (System.currentTimeMillis() - start));
         }
+    }
+
+    private TScanRangeLocations splitToScanRange(
+            Backend backend,
+            Map<String, String> locationProperties,
+            Split split,
+            List<String> pathPartitionKeys) throws UserException {
+        FileSplit fileSplit = (FileSplit) split;
+        TFileType locationType;
+        if (fileSplit instanceof IcebergSplit
+                && ((IcebergSplit) fileSplit).getConfig().containsKey(HMSExternalCatalog.BIND_BROKER_NAME)) {
+            locationType = TFileType.FILE_BROKER;
+        } else {
+            locationType = getLocationType(fileSplit.getPath().toString());
+        }
+
+        TScanRangeLocations curLocations = newLocations();
+        // If fileSplit has partition values, use the values collected from hive partitions.
+        // Otherwise, use the values in file path.
+        boolean isACID = false;
+        if (fileSplit instanceof HiveSplit) {
+            HiveSplit hiveSplit = (HiveSplit) fileSplit;
+            isACID = hiveSplit.isACID();
+        }
+        List<String> partitionValuesFromPath = fileSplit.getPartitionValues() == null
+                ? BrokerUtil.parseColumnsFromPath(fileSplit.getPath().toString(), pathPartitionKeys,
+                false, isACID) : fileSplit.getPartitionValues();
+
+        TFileRangeDesc rangeDesc = createFileRangeDesc(fileSplit, partitionValuesFromPath, pathPartitionKeys,
+                locationType);
+        TFileCompressType fileCompressType = getFileCompressType(fileSplit);
+        rangeDesc.setCompressType(fileCompressType);
+        if (isACID) {
+            HiveSplit hiveSplit = (HiveSplit) fileSplit;
+            hiveSplit.setTableFormatType(TableFormatType.TRANSACTIONAL_HIVE);
+            TTableFormatFileDesc tableFormatFileDesc = new TTableFormatFileDesc();
+            tableFormatFileDesc.setTableFormatType(hiveSplit.getTableFormatType().value());
+            AcidInfo acidInfo = (AcidInfo) hiveSplit.getInfo();
+            TTransactionalHiveDesc transactionalHiveDesc = new TTransactionalHiveDesc();
+            transactionalHiveDesc.setPartition(acidInfo.getPartitionLocation());
+            List<TTransactionalHiveDeleteDeltaDesc> deleteDeltaDescs = new ArrayList<>();
+            for (DeleteDeltaInfo deleteDeltaInfo : acidInfo.getDeleteDeltas()) {
+                TTransactionalHiveDeleteDeltaDesc deleteDeltaDesc = new TTransactionalHiveDeleteDeltaDesc();
+                deleteDeltaDesc.setDirectoryLocation(deleteDeltaInfo.getDirectoryLocation());
+                deleteDeltaDesc.setFileNames(deleteDeltaInfo.getFileNames());
+                deleteDeltaDescs.add(deleteDeltaDesc);
+            }
+            transactionalHiveDesc.setDeleteDeltas(deleteDeltaDescs);
+            tableFormatFileDesc.setTransactionalHiveParams(transactionalHiveDesc);
+            rangeDesc.setTableFormatParams(tableFormatFileDesc);
+        }
+
+        setScanParams(rangeDesc, fileSplit);
+        curLocations.getScanRange().getExtScanRange().getFileScanRange().addToRanges(rangeDesc);
+        TScanRangeLocation location = new TScanRangeLocation();
+        setLocationPropertiesIfNecessary(backend, locationType, locationProperties);
+        location.setBackendId(backend.getId());
+        location.setServer(new TNetworkAddress(backend.getHost(), backend.getBePort()));
+        curLocations.addToLocations(location);
+        return curLocations;
     }
 
     private void setLocationPropertiesIfNecessary(Backend selectedBackend, TFileType locationType,

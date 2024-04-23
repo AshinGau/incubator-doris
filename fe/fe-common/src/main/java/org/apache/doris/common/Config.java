@@ -2236,6 +2236,11 @@ public class Config extends ConfigBase {
             "Default hive file format for creating table."})
     public static String hive_default_file_format = "orc";
 
+    @ConfField(mutable = true, masterOnly = false, description = {
+            "如果切片数量超过阈值，BE将通过batch方式获取scan ranges",
+            "If the number of splits exceeds the threshold, scan ranges will be got through batch mode."})
+    public static int num_splits_in_batch_mode = 4096;
+
     @ConfField
     public static int statistics_sql_parallel_exec_instance_num = 1;
 

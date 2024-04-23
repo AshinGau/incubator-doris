@@ -46,6 +46,7 @@ import org.apache.doris.common.NotImplementedException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.datasource.FederationBackendPolicy;
 import org.apache.doris.datasource.FileScanNode;
+import org.apache.doris.datasource.SplitSource;
 import org.apache.doris.nereids.glue.translator.PlanTranslatorContext;
 import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.rpc.RpcException;
@@ -91,6 +92,7 @@ public abstract class ScanNode extends PlanNode {
     protected String sortColumn = null;
     protected Analyzer analyzer;
     protected List<TScanRangeLocations> scanRangeLocations = Lists.newArrayList();
+    protected List<SplitSource> splitSources = Lists.newArrayList();
     protected PartitionInfo partitionsInfo = null;
 
     // create a mapping between output slot's id and project expr

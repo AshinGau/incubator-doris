@@ -1448,6 +1448,16 @@ struct TReportCommitTxnResultRequest {
     4: optional binary payload
 }
 
+struct TFetchSplitBatchRequest {
+    1: optional i64 split_source_id
+    2: optional i32 max_num_splits
+}
+
+struct TFetchSplitBatchResult {
+    1: optional list<Planner.TScanRangeLocations> splits
+    2: optional bool last_batch
+}
+
 service FrontendService {
     TGetDbsResult getDbNames(1: TGetDbsParams params)
     TGetTablesResult getTableNames(1: TGetTablesParams params)
@@ -1538,4 +1548,6 @@ service FrontendService {
     TShowProcessListResult showProcessList(1: TShowProcessListRequest request)
     Status.TStatus reportCommitTxnResult(1: TReportCommitTxnResultRequest request)
     TShowUserResult showUser(1: TShowUserRequest request)
+
+    TFetchSplitBatchResult fetchSplitBatch(1: TFetchSplitBatchRequest request)
 }

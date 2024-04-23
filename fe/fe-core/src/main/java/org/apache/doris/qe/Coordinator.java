@@ -2460,12 +2460,16 @@ public class Coordinator implements CoordInterface {
         if (externalScanRange != null) {
             TFileScanRange fileScanRange = externalScanRange.getFileScanRange();
             if (fileScanRange != null) {
-                scanRangeNum += fileScanRange.getRanges().size();
+                if (fileScanRange.isSetRanges()) {
+                    scanRangeNum += fileScanRange.getRanges().size();
+                } else if (fileScanRange.isSetSplitSource()) {
+                    scanRangeNum += fileScanRange.getSplitSource().getNumSplits();
+                }
             }
         }
         TPaloScanRange paloScanRange = scanRange.getPaloScanRange();
         if (paloScanRange != null) {
-            scanRangeNum = scanRangeNum + 1;
+            scanRangeNum += 1;
         }
         // TODO: more ranges?
     }
