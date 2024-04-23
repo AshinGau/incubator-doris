@@ -132,6 +132,7 @@ import org.apache.doris.datasource.CatalogMgr;
 import org.apache.doris.datasource.ExternalMetaCacheMgr;
 import org.apache.doris.datasource.ExternalMetaIdMgr;
 import org.apache.doris.datasource.InternalCatalog;
+import org.apache.doris.datasource.SplitSourceManager;
 import org.apache.doris.datasource.es.EsExternalCatalog;
 import org.apache.doris.datasource.es.EsRepository;
 import org.apache.doris.datasource.hive.HiveTransactionMgr;
@@ -542,6 +543,8 @@ public class Env {
 
     private final NereidsSqlCacheManager sqlCacheManager;
 
+    private final SplitSourceManager splitSourceManager;
+
     public List<TFrontendInfo> getFrontendInfos() {
         List<TFrontendInfo> res = new ArrayList<>();
 
@@ -783,6 +786,7 @@ public class Env {
         this.sqlCacheManager = new NereidsSqlCacheManager(
                 Config.sql_cache_manage_num, Config.cache_last_version_interval_second
         );
+        this.splitSourceManager = new SplitSourceManager();
     }
 
     public static void destroyCheckpoint() {
@@ -1744,7 +1748,7 @@ public class Env {
         workloadGroupMgr.startUpdateThread();
         workloadSchedPolicyMgr.start();
         workloadRuntimeStatusMgr.start();
-
+        splitSourceManager.start();
     }
 
     private void transferToNonMaster(FrontendNodeType newType) {
@@ -6120,6 +6124,10 @@ public class Env {
 
     public NereidsSqlCacheManager getSqlCacheManager() {
         return sqlCacheManager;
+    }
+
+    public SplitSourceManager getSplitSourceManager() {
+        return splitSourceManager;
     }
 
     public StatisticsJobAppender getStatisticsJobAppender() {
