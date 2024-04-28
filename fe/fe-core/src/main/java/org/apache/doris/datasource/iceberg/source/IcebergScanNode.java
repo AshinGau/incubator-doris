@@ -327,8 +327,8 @@ public class IcebergScanNode extends FileQueryScanNode {
                 filters.add(IcebergDeleteFileFilter.createPositionDelete(delete.path().toString(),
                         positionLowerBound.orElse(-1L), positionUpperBound.orElse(-1L)));
             } else if (delete.content() == FileContent.EQUALITY_DELETES) {
-                // todo: filters.add(IcebergDeleteFileFilter.createEqualityDelete(delete.path().toString(),
-                throw new IllegalStateException("Don't support equality delete file");
+                filters.add(IcebergDeleteFileFilter.createEqualityDelete(
+                        delete.path().toString(), delete.equalityFieldIds()));
             } else {
                 throw new IllegalStateException("Unknown delete content: " + delete.content());
             }

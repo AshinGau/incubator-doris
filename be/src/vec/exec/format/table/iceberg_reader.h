@@ -32,6 +32,7 @@
 #include "table_format_reader.h"
 #include "util/runtime_profile.h"
 #include "vec/columns/column_dictionary.h"
+#include "vec/exec/format/table/equality_delete.h"
 
 namespace tparquet {
 class KeyValue;
@@ -108,6 +109,10 @@ private:
     };
 
     Status _position_delete(const std::vector<TIcebergDeleteFileDesc>& delete_files);
+    Status _equality_delete(const std::vector<TIcebergDeleteFileDesc>& delete_files);
+    void _generate_equality_delete_block(Block* block,
+                                         const std::vector<std::string>& delete_file_col_names,
+                                         const std::vector<TypeDescriptor>& delete_file_col_types);
 
     /**
      * https://iceberg.apache.org/spec/#position-delete-files
@@ -156,6 +161,10 @@ private:
     bool _has_iceberg_schema = false;
 
     int64_t _remaining_push_down_count;
+
+    // equality delete
+    Block _equality_delete_block;
+    std::unique_ptr<EqualityDeleteBase> _equality_delete_impl;
 };
 } // namespace vectorized
 } // namespace doris
