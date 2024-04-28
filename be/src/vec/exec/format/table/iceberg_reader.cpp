@@ -222,10 +222,10 @@ Status IcebergTableReader::init_row_filters(const TFileRangeDesc& range) {
     std::vector<TIcebergDeleteFileDesc> position_delete_files;
     std::vector<TIcebergDeleteFileDesc> equality_delete_files;
     for (const TIcebergDeleteFileDesc& desc : table_desc.delete_files) {
-        if (desc.__isset.field_ids) {
-            equality_delete_files.emplace_back(desc);
-        } else {
+        if (desc.content == POSITION_DELETE) {
             position_delete_files.emplace_back(desc);
+        } else if (desc.content == EQUALITY_DELETE) {
+            equality_delete_files.emplace_back(desc);
         }
     }
 
@@ -285,7 +285,7 @@ Status IcebergTableReader::_equality_delete(
         }
     }
     _equality_delete_impl = EqualityDeleteBase::get_delete_impl(&_equality_delete_block);
-    return Status::OK();
+    return _equality_delete_impl->init(_profile);
 }
 
 void IcebergTableReader::_generate_equality_delete_block(

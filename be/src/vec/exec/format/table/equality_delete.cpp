@@ -48,10 +48,11 @@ Status SimpleEqualityDelete::filter_data_block(Block* data_block) {
                                      _delete_column_name);
     }
     size_t rows = data_block->rows();
+    // _filter: 1 => in _hybrid_set; 0 => not in _hybrid_set
     if (_filter == nullptr) {
-        _filter = std::make_unique<IColumn::Filter>(rows, 1);
+        _filter = std::make_unique<IColumn::Filter>(rows, 0);
     } else {
-        _filter->resize_fill(rows, 1);
+        _filter->resize_fill(rows, 0);
     }
 
     if (column_and_type->column->is_nullable()) {
@@ -70,6 +71,11 @@ Status SimpleEqualityDelete::filter_data_block(Block* data_block) {
     } else {
         _hybrid_set->find_batch(column_and_type->column->assume_mutable_ref(), rows,
                                 *_filter.get());
+    }
+    // should reverse _filter
+    auto* filter_data = _filter->data();
+    for (size_t i = 0; i < rows; ++i) {
+        filter_data[i] = !filter_data[i];
     }
 
     Block::filter_block_internal(data_block, *_filter.get(), data_block->columns());

@@ -38,6 +38,7 @@ public:
 
     Status init(RuntimeProfile* profile) {
         static const char* delete_profile = "EqualityDelete";
+        ADD_TIMER_WITH_LEVEL(profile, delete_profile, 1);
         num_delete_rows = ADD_CHILD_COUNTER_WITH_LEVEL(profile, "NumRowsInDeleteFile", TUnit::UNIT,
                                                        delete_profile, 1);
         build_set_time = ADD_CHILD_TIMER_WITH_LEVEL(profile, "BuildHashSetTime", delete_profile, 1);

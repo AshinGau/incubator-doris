@@ -153,7 +153,6 @@ public class IcebergScanNode extends FileQueryScanNode {
                 Path splitDeletePath = locationPath.toScanRangeLocation();
                 deleteFileDesc.setPath(splitDeletePath.toString());
                 if (filter instanceof IcebergDeleteFileFilter.PositionDelete) {
-                    fileDesc.setContent(FileContent.POSITION_DELETES.id());
                     IcebergDeleteFileFilter.PositionDelete positionDelete =
                             (IcebergDeleteFileFilter.PositionDelete) filter;
                     OptionalLong lowerBound = positionDelete.getPositionLowerBound();
@@ -164,11 +163,12 @@ public class IcebergScanNode extends FileQueryScanNode {
                     if (upperBound.isPresent()) {
                         deleteFileDesc.setPositionUpperBound(upperBound.getAsLong());
                     }
+                    deleteFileDesc.setContent(FileContent.POSITION_DELETES.id());
                 } else {
-                    fileDesc.setContent(FileContent.EQUALITY_DELETES.id());
                     IcebergDeleteFileFilter.EqualityDelete equalityDelete =
                             (IcebergDeleteFileFilter.EqualityDelete) filter;
                     deleteFileDesc.setFieldIds(equalityDelete.getFieldIds());
+                    deleteFileDesc.setContent(FileContent.EQUALITY_DELETES.id());
                 }
                 fileDesc.addToDeleteFiles(deleteFileDesc);
             }
