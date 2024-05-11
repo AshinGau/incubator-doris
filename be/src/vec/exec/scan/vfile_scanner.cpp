@@ -1094,6 +1094,16 @@ Status VFileScanner::_init_expr_ctxes() {
                 _partition_slot_index_map.emplace(slot_id, iti->second - _num_of_columns_from_file);
             } else {
                 auto kit = partition_name_to_key_index_map.find(it->second->col_name());
+                if (kit == partition_name_to_key_index_map.end()) {
+                    if (_current_range.__isset.columns_from_path_keys) {
+                        for (auto& partition : _current_range.columns_from_path_keys) {
+                            LOG(WARNING) << "partition key: " << partition;
+                        }
+                    }
+                    LOG(WARNING) << "need partition key: " << it->second->col_name();
+                    return Status::InternalError("Wrong partition key '{}'",
+                                                 it->second->col_name());
+                }
                 _partition_slot_index_map.emplace(slot_id, kit->second);
             }
         }
