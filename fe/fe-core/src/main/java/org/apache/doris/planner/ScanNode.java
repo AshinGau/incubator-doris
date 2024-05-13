@@ -134,10 +134,6 @@ public abstract class ScanNode extends PlanNode implements SplitGenerator {
         sortColumn = column;
     }
 
-    protected List<Split> getSplits() throws UserException {
-        throw new NotImplementedException("Scan node sub class need to implement getSplits interface.");
-    }
-
     /**
      * cast expr to SlotDescriptor type
      */
