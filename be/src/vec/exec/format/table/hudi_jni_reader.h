@@ -63,6 +63,12 @@ public:
     Status init_reader(
             std::unordered_map<std::string, ColumnValueRangeType>* colname_to_value_range);
 
+    Status close() override {
+        if (_jni_connector) {
+            return _jni_connector->close();
+        }
+    }
+
 private:
     const TFileScanRangeParams& _scan_params;
     const THudiFileDesc& _hudi_params;

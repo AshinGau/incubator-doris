@@ -85,6 +85,12 @@ public:
 
     TypeDescriptor convert_complex_type(const rapidjson::Document::ConstObject child_schema);
 
+    Status close() override {
+        if (_jni_connector) {
+            return _jni_connector->close();
+        }
+    }
+
 private:
     const std::vector<SlotDescriptor*>& _file_slot_descs;
     RuntimeState* _state = nullptr;
