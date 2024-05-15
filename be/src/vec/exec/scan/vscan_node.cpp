@@ -480,7 +480,7 @@ Status VScanNode::_normalize_predicate(const VExprSPtr& conjunct_expr_root, VExp
 
             if (pdt == PushDownType::UNACCEPTABLE &&
                 TExprNodeType::COMPOUND_PRED == cur_expr->node_type()) {
-                static_cast<void>(_normalize_compound_predicate(
+                RETURN_IF_ERROR(_normalize_compound_predicate(
                         cur_expr, context, &pdt, _is_runtime_filter_predicate, in_predicate_checker,
                         eq_predicate_checker));
                 output_expr = conjunct_expr_root; // remaining in conjunct tree
@@ -983,13 +983,13 @@ Status VScanNode::_normalize_compound_predicate(
                                             _is_runtime_filter_predicate);
                                 }};
                                 if (TExprNodeType::BINARY_PRED == child_expr->node_type()) {
-                                    static_cast<void>(_normalize_binary_compound_predicate(
+                                    RETURN_IF_ERROR(_normalize_binary_compound_predicate(
                                             child_expr, expr_ctx, slot, value_range, pdt));
                                 } else if (TExprNodeType::IN_PRED == child_expr->node_type()) {
-                                    static_cast<void>(_normalize_in_and_not_in_compound_predicate(
+                                    RETURN_IF_ERROR(_normalize_in_and_not_in_compound_predicate(
                                             child_expr, expr_ctx, slot, value_range, pdt));
                                 } else {
-                                    static_cast<void>(_normalize_match_compound_predicate(
+                                    RETURN_IF_ERROR(_normalize_match_compound_predicate(
                                             child_expr, expr_ctx, slot, value_range, pdt));
                                 }
                             },
@@ -998,7 +998,7 @@ Status VScanNode::_normalize_compound_predicate(
                     _compound_value_ranges.emplace_back(active_range);
                 }
             } else if (TExprNodeType::COMPOUND_PRED == child_expr->node_type()) {
-                static_cast<void>(_normalize_compound_predicate(
+                RETURN_IF_ERROR(_normalize_compound_predicate(
                         child_expr, expr_ctx, pdt, _is_runtime_filter_predicate,
                         in_predicate_checker, eq_predicate_checker));
             }
