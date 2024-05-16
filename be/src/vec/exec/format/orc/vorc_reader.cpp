@@ -1524,6 +1524,17 @@ std::string OrcReader::get_field_name_lower_case(const orc::Type* orc_type, int 
 }
 
 Status OrcReader::get_next_block(Block* block, size_t* read_rows, bool* eof) {
+    RETURN_IF_ERROR(get_next_block_impl(block, read_rows, eof));
+    if (_orc_filter) {
+        RETURN_IF_ERROR(_orc_filter->get_status());
+    }
+    if (_string_dict_filter) {
+        RETURN_IF_ERROR(_string_dict_filter->get_status());
+    }
+    return Status::OK();
+}
+
+Status OrcReader::get_next_block_impl(Block* block, size_t* read_rows, bool* eof) {
     if (_io_ctx && _io_ctx->should_stop) {
         *eof = true;
         *read_rows = 0;
