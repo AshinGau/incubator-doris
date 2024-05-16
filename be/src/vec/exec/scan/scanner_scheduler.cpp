@@ -246,7 +246,10 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         scanner->set_opened();
     }
 
-    static_cast<void>(scanner->try_append_late_arrival_runtime_filter());
+    Status rf_status = scanner->try_append_late_arrival_runtime_filter();
+    if (!rf_status.ok()) {
+        LOG(WARNING) << "Failed to append late arrival runtime filter: " << rf_status.to_string();
+    }
 
     size_t raw_bytes_threshold = config::doris_scanner_row_bytes;
     size_t raw_bytes_read = 0;
