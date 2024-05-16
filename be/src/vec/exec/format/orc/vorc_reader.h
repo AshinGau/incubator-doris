@@ -239,7 +239,7 @@ private:
         Status get_status() { return _status; }
 
     private:
-        Status _status = Status::OK();
+        mutable Status _status = Status::OK();
         OrcReader* _orcReader = nullptr;
     };
 
@@ -268,7 +268,7 @@ private:
         Status get_status() { return _status; }
 
     private:
-        Status _status = Status::OK();
+        mutable Status _status = Status::OK();
         OrcReader* _orc_reader = nullptr;
     };
 

@@ -89,6 +89,7 @@ public:
         if (_jni_connector) {
             return _jni_connector->close();
         }
+        return Status::OK();
     }
 
 private:

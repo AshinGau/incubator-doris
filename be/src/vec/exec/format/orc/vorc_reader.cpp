@@ -1740,7 +1740,7 @@ Status OrcReader::get_next_block_impl(Block* block, size_t* read_rows, bool* eof
                     std::move(*block->get_by_position(col).column).assume_mutable()->clear();
                 }
                 Block::erase_useless_column(block, column_to_keep);
-                return _convert_dict_cols_to_string_cols(block, &batch_vec)
+                return _convert_dict_cols_to_string_cols(block, &batch_vec);
             }
             _execute_filter_position_delete_rowids(result_filter);
             RETURN_IF_CATCH_EXCEPTION(
