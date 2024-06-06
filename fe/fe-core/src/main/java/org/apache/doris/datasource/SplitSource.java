@@ -106,10 +106,6 @@ public class SplitSource {
             }
         }
         LOG.warn("Get next batch, size = " + scanRanges.size());
-        BlockingQueue<Split> splits = splitAssignment.getAssignedSplits(backend);
-        if (splits != null && splits.size() < maxBatchSize) {
-            splitAssignment.prefetchSplits();
-        }
         LOG.warn("Get next batch, time = " + (System.currentTimeMillis() - startTime));
         return scanRanges;
     }

@@ -97,7 +97,7 @@ public abstract class FileQueryScanNode extends FileScanNode {
 
     protected String brokerName;
 
-    SplitAssignment splitAssignment;
+    protected SplitAssignment splitAssignment;
 
     /**
      * External file scan node for Query hms table

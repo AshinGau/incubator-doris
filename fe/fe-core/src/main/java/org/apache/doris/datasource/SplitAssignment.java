@@ -43,10 +43,9 @@ public class SplitAssignment {
     private static final Logger LOG = LogManager.getLogger(SplitAssignment.class);
 
     // magic number to estimate how many splits are allocated to BE in each batch
-    private static final int NUM_SPLITS_PER_BE = 1024;
+    private static final int NUM_SPLITS_PER_BE = 10240;
     // magic number to estimate how many splits are generated of each partition in each batch.
     private static final int NUM_SPLITS_PER_PARTITION = 10;
-    private static final int NUM_PREFETCH_BATCHES = 4;
 
     private final Set<Long> sources = new HashSet<>();
     private final FederationBackendPolicy backendPolicy;
@@ -79,7 +78,6 @@ public class SplitAssignment {
         }
         LOG.warn("assignment init time: " + (System.currentTimeMillis() - startTime));
         generateBatches();
-        prefetchSplits();
     }
 
     private void appendBatch(Multimap<Backend, Split> batch) {
@@ -108,21 +106,12 @@ public class SplitAssignment {
         executor.execute(() -> {
             try {
                 while (splitGenerator.hasNext() && !isStop.get()) {
-                    long startTime = System.currentTimeMillis();
-                    synchronized (this) {
-                        wait(1000);
-                    }
-                    LOG.warn("generate wait time: " + (System.currentTimeMillis() - startTime));
-                    for (int i = 0; i < NUM_PREFETCH_BATCHES && splitGenerator.hasNext() && !isStop.get(); ++i) {
-                        appendBatch(backendPolicy.computeScanRangeAssignment(
-                                splitGenerator.getNextBatch(maxBatchSize)));
-                    }
+                    appendBatch(backendPolicy.computeScanRangeAssignment(
+                            splitGenerator.getNextBatch(maxBatchSize)));
                 }
                 isLastBatch.set(true);
             } catch (UserException e) {
                 exception = e;
-            } catch (InterruptedException e) {
-                exception = new UserException("Interrupt in generate split batches", e);
             }
         });
     }
@@ -132,21 +121,13 @@ public class SplitAssignment {
             throw exception;
         }
         BlockingQueue<Split> splits = assignment.computeIfAbsent(backend, be -> new LinkedBlockingQueue<>());
-        if (isLastBatch.get() && splits.isEmpty()) {
+        if (isLastBatch.get() && splits.isEmpty() || isStop.get()) {
             return null;
-        }
-        if (splits.size() < NUM_SPLITS_PER_BE) {
-            prefetchSplits();
         }
         return splits;
     }
 
-    public synchronized void prefetchSplits() {
-        notify();
-    }
-
-    public synchronized void stop() {
+    public void stop() {
         isStop.set(true);
-        notify();
     }
 }
