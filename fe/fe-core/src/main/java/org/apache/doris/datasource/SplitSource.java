@@ -22,6 +22,9 @@ import org.apache.doris.spi.Split;
 import org.apache.doris.system.Backend;
 import org.apache.doris.thrift.TScanRangeLocations;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -42,6 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * the split source when its related scan node is GC.
  */
 public class SplitSource {
+    private static final Logger LOG = LogManager.getLogger(SplitSource.class);
     private static final AtomicLong UNIQUE_ID_GENERATOR = new AtomicLong(0);
 
     private final long uniqueId;
@@ -76,6 +80,8 @@ public class SplitSource {
      * Get the next batch of file splits. If there's no more split, return empty list.
      */
     public List<TScanRangeLocations> getNextBatch(int maxBatchSize) throws UserException {
+        long startTime = System.currentTimeMillis();
+        LOG.warn("Start to get next batch");
         if (isLastBatch.get()) {
             return Collections.emptyList();
         }
@@ -99,10 +105,12 @@ public class SplitSource {
                 }
             }
         }
+        LOG.warn("Get next batch, size = " + scanRanges.size());
         BlockingQueue<Split> splits = splitAssignment.getAssignedSplits(backend);
         if (splits != null && splits.size() < maxBatchSize) {
             splitAssignment.prefetchSplits();
         }
+        LOG.warn("Get next batch, time = " + (System.currentTimeMillis() - startTime));
         return scanRanges;
     }
 }

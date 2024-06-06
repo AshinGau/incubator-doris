@@ -24,6 +24,8 @@ import org.apache.doris.spi.Split;
 import org.apache.doris.system.Backend;
 
 import com.google.common.collect.Multimap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -38,6 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * `SplitGenerator` provides the file splits, and `FederationBackendPolicy` assigns these splits to backends.
  */
 public class SplitAssignment {
+    private static final Logger LOG = LogManager.getLogger(SplitAssignment.class);
+
     // magic number to estimate how many splits are allocated to BE in each batch
     private static final int NUM_SPLITS_PER_BE = 1024;
     // magic number to estimate how many splits are generated of each partition in each batch.
@@ -66,12 +70,14 @@ public class SplitAssignment {
     }
 
     public void init() throws UserException {
+        long startTime = System.currentTimeMillis();
         if (assignment.isEmpty() && splitGenerator.hasNext()) {
             Multimap<Backend, Split> batch = backendPolicy.computeScanRangeAssignment(
                     splitGenerator.getNextBatch(maxBatchSize));
             appendBatch(batch);
             sampleSplit = batch.values().iterator().next();
         }
+        LOG.warn("assignment init time: " + (System.currentTimeMillis() - startTime));
         generateBatches();
         prefetchSplits();
     }
@@ -102,9 +108,11 @@ public class SplitAssignment {
         executor.execute(() -> {
             try {
                 while (splitGenerator.hasNext() && !isStop.get()) {
+                    long startTime = System.currentTimeMillis();
                     synchronized (this) {
                         wait(1000);
                     }
+                    LOG.warn("generate wait time: " + (System.currentTimeMillis() - startTime));
                     for (int i = 0; i < NUM_PREFETCH_BATCHES && splitGenerator.hasNext() && !isStop.get(); ++i) {
                         appendBatch(backendPolicy.computeScanRangeAssignment(
                                 splitGenerator.getNextBatch(maxBatchSize)));
