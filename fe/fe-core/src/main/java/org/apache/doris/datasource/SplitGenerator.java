@@ -65,4 +65,10 @@ public interface SplitGenerator {
     default int numApproximateSplits() {
         return -1;
     }
+
+    /**
+     * Close split generator, and stop the split executor
+     */
+    default void stop() {
+    }
 }

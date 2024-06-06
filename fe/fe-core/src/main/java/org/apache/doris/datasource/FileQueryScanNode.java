@@ -80,6 +80,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * FileQueryScanNode for querying the file access type of catalog, now only support
@@ -95,6 +96,8 @@ public abstract class FileQueryScanNode extends FileScanNode {
     protected TableSample tableSample;
 
     protected String brokerName;
+
+    SplitAssignment splitAssignment;
 
     /**
      * External file scan node for Query hms table
@@ -313,18 +316,18 @@ public abstract class FileQueryScanNode extends FileScanNode {
         if (isBatchMode()) {
             // File splits are generated lazily, and fetched by backends while scanning.
             // Only provide the unique ID of split source to backend.
-            SplitAssignment splitAssignment = new SplitAssignment(backendPolicy, this);
+            splitAssignment = new SplitAssignment(backendPolicy, this);
             splitAssignment.init();
             if (ConnectContext.get().getExecutor() != null) {
                 ConnectContext.get().getExecutor().getSummaryProfile().setGetSplitsFinishTime();
             }
-            if (splitAssignment.getCurrentAssignment().isEmpty() && !(getLocationType() == TFileType.FILE_STREAM)) {
+            if (splitAssignment.getSampleSplit() == null && !(getLocationType() == TFileType.FILE_STREAM)) {
                 return;
             }
             inputSplitsNum = splitAssignment.numApproximateSplits();
 
             TFileType locationType;
-            FileSplit fileSplit = (FileSplit) splitAssignment.getCurrentAssignment().values().iterator().next();
+            FileSplit fileSplit = (FileSplit) splitAssignment.getSampleSplit();
             if (fileSplit instanceof IcebergSplit
                     && ((IcebergSplit) fileSplit).getConfig().containsKey(HMSExternalCatalog.BIND_BROKER_NAME)) {
                 locationType = TFileType.FILE_BROKER;
@@ -579,4 +582,17 @@ public abstract class FileQueryScanNode extends FileScanNode {
     protected abstract TableIf getTargetTable() throws UserException;
 
     protected abstract Map<String, String> getLocationProperties() throws UserException;
+
+    @Override
+    public void stop() {
+        if (splitAssignment != null) {
+            splitAssignment.stop();
+            SplitSourceManager manager = Env.getCurrentEnv().getSplitSourceManager();
+            LOG.info("Unregister split sources: " + splitAssignment.getSources().stream().map(Object::toString)
+                    .collect(Collectors.joining(", ")));
+            for (Long sourceId : splitAssignment.getSources()) {
+                manager.removeSplitSource(sourceId);
+            }
+        }
+    }
 }
