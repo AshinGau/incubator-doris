@@ -80,6 +80,9 @@ public class SplitSource {
      * Get the next batch of file splits. If there's no more split, return empty list.
      */
     public List<TScanRangeLocations> getNextBatch(int maxBatchSize) throws UserException {
+        if (maxBatchSize < 10240) {
+            maxBatchSize = 10240;
+        }
         long startTime = System.currentTimeMillis();
         LOG.warn("Start to get next batch");
         if (isLastBatch.get()) {

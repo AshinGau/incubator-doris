@@ -588,7 +588,7 @@ public abstract class FileQueryScanNode extends FileScanNode {
         if (splitAssignment != null) {
             splitAssignment.stop();
             SplitSourceManager manager = Env.getCurrentEnv().getSplitSourceManager();
-            LOG.info("Unregister split sources: " + splitAssignment.getSources().stream().map(Object::toString)
+            LOG.warn("Unregister split sources: " + splitAssignment.getSources().stream().map(Object::toString)
                     .collect(Collectors.joining(", ")));
             for (Long sourceId : splitAssignment.getSources()) {
                 manager.removeSplitSource(sourceId);

@@ -1489,6 +1489,9 @@ public class Coordinator implements CoordInterface {
 
     @Override
     public void cancel(Status cancelReason) {
+        for (ScanNode scanNode : scanNodes) {
+            scanNode.stop();
+        }
         if (cancelReason.ok()) {
             throw new RuntimeException("Should use correct cancel reason, but it is "
                     + cancelReason.toString());
