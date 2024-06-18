@@ -587,13 +587,10 @@ public abstract class ExternalCatalog
         Map<String, Long> tmpDbNameToId = Maps.newConcurrentMap();
         Map<Long,  ExternalDatabase<? extends ExternalTable>> tmpIdToDb = Maps.newConcurrentMap();
         for (int i = 0; i < log.getRefreshCount(); i++) {
-            Optional<ExternalDatabase<? extends ExternalTable>> db = getDbForReplay(log.getRefreshDbIds().get(i));
-            // Should not return null.
-            // Because replyInitCatalog can only be called when `use_meta_cache` is false.
-            // And if `use_meta_cache` is false, getDbForReplay() will not return null
-            Preconditions.checkNotNull(db.get());
-            tmpDbNameToId.put(db.get().getFullName(), db.get().getId());
-            tmpIdToDb.put(db.get().getId(), db.get());
+            getDbForReplay(log.getRefreshDbIds().get(i)).ifPresent(db -> {
+                tmpDbNameToId.put(db.getFullName(), db.getId());
+                tmpIdToDb.put(db.getId(), db);
+            });
         }
         for (int i = 0; i < log.getCreateCount(); i++) {
             ExternalDatabase<? extends ExternalTable> db =
