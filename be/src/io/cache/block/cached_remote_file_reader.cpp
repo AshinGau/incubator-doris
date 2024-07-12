@@ -73,7 +73,10 @@ CachedRemoteFileReader::~CachedRemoteFileReader() {
 Status CachedRemoteFileReader::close() {
     if (_num_write_blocks > 0 && !_is_doris_table) {
         // try to merge small cells in non-doris table
-        RETURN_IF_ERROR(_cache->async_merge(_cache_key));
+        Status st = _cache->async_merge(_cache_key);
+        if (!st) {
+            LOG(WARNING) << "Failed to merge small blocks: " << st;
+        }
     }
     return _remote_file_reader->close();
 }
