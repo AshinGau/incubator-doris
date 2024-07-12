@@ -168,6 +168,7 @@ Status FileBlock::async_write(std::shared_ptr<char[]> buffer, size_t offset, siz
                 if (!block_ptr->_status) {
                     return;
                 }
+                sleep(2);
                 Status append_st = block_ptr->append(Slice(buffer_ptr.get() + off, size));
                 if (!append_st) {
                     block_ptr->_status = append_st;
