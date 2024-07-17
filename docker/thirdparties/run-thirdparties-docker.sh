@@ -161,7 +161,7 @@ for element in "${COMPONENTS_ARR[@]}"; do
         RUN_ICEBERG=1
     elif [[ "${element}"x == "hudi"x ]]; then
         RUN_HUDI=1
-        RUN_HIVE3=1
+        RUN_HIVE2=1
     elif [[ "${element}"x == "trino"x ]]; then
         RUN_TRINO=1
     elif [[ "${element}"x == "spark"x ]]; then
@@ -308,6 +308,30 @@ if [[ "${RUN_KAFKA}" -eq 1 ]]; then
     fi
 fi
 
+download_source_file() {
+    local FILE_PATH="$1"
+    local EXPECTED_MD5="$2"
+    local DOWNLOAD_URL="$3"
+
+    echo "Download ${FILE_PATH}"
+
+    if [[ -f "${FILE_PATH}" ]]; then
+        local FILE_MD5
+        FILE_MD5=$(md5sum "${FILE_PATH}" | awk '{ print $1 }')
+
+        if [[ "${FILE_MD5}" = "${EXPECTED_MD5}" ]]; then
+            echo "${FILE_PATH} is ready!"
+        else
+            echo "${FILE_PATH} is broken, Redownloading ..."
+            rm "${FILE_PATH}"
+            wget "${DOWNLOAD_URL}"/"${FILE_PATH}"
+        fi
+    else
+        echo "Downloading ${FILE_PATH} ..."
+        wget "${DOWNLOAD_URL}"/"${FILE_PATH}"
+    fi
+}
+
 if [[ "${RUN_HIVE2}" -eq 1 ]]; then
     # hive2
     # If the doris cluster you need to test is single-node, you can use the default values; If the doris cluster you need to test is composed of multiple nodes, then you need to set the IP_HOST according to the actual situation of your machine
@@ -341,35 +365,35 @@ if [[ "${RUN_HIVE2}" -eq 1 ]]; then
     . "${ROOT}"/docker-compose/hive/hive-2x_settings.env
     envsubst <"${ROOT}"/docker-compose/hive/hive-2x.yaml.tpl >"${ROOT}"/docker-compose/hive/hive-2x.yaml
     envsubst <"${ROOT}"/docker-compose/hive/hadoop-hive.env.tpl >"${ROOT}"/docker-compose/hive/hadoop-hive.env
+
+    # hudi depends on hive2
+    if [[ "${RUN_HUDI}" -eq 1 ]]; then
+        mkdir -p "${ROOT}"/docker-compose/hudi/scripts/packages
+        cd "${ROOT}"/docker-compose/hudi/scripts/packages
+
+        download_source_file "hudi-spark3.4-bundle_2.12-0.14.1.jar" "a9cb8c752d1d7132ef3cfe3ead78a30d" "https://repo1.maven.org/maven2/org/apache/hudi/hudi-spark3.4-bundle_2.12/0.14.1"
+        download_source_file "spark-3.4.2-bin-hadoop3.tgz" "b393d314ffbc03facdc85575197c5db9" "https://archive.apache.org/dist/spark/spark-3.4.2"
+
+        if [[ ! -f "spark-3.4.2-bin-hadoop3/SUCCESS" ]]; then
+            echo "Prepare spark3.4 environment"
+            if [[ -d "spark-3.4.2-bin-hadoop3" ]]; then
+                echo "Remove broken spark-3.4.2-bin-hadoop3"
+                rm -rf spark-3.4.2-bin-hadoop3
+            fi
+            echo "Unpackage spark-3.4.2-bin-hadoop3"
+            tar -xf spark-3.4.2-bin-hadoop3.tgz
+            cp hudi-spark3.4-bundle_2.12-0.14.1.jar spark-3.4.2-bin-hadoop3/jars/
+            touch spark-3.4.2-bin-hadoop3/SUCCESS
+        fi
+
+        cd -
+    fi
+
     sudo docker compose -p ${CONTAINER_UID}hive2 -f "${ROOT}"/docker-compose/hive/hive-2x.yaml --env-file "${ROOT}"/docker-compose/hive/hadoop-hive.env down
     if [[ "${STOP}" -ne 1 ]]; then
         sudo docker compose -p ${CONTAINER_UID}hive2 -f "${ROOT}"/docker-compose/hive/hive-2x.yaml --env-file "${ROOT}"/docker-compose/hive/hadoop-hive.env up --build --remove-orphans -d
     fi
 fi
-
-download_source_file() {
-    local FILE_PATH="$1"
-    local EXPECTED_MD5="$2"
-    local DOWNLOAD_URL="$3"
-
-    echo "Download ${FILE_PATH}"
-
-    if [[ -f "${FILE_PATH}" ]]; then
-        local FILE_MD5
-        FILE_MD5=$(md5sum "${FILE_PATH}" | awk '{ print $1 }')
-
-        if [[ "${FILE_MD5}" = "${EXPECTED_MD5}" ]]; then
-            echo "${FILE_PATH} is ready!"
-        else
-            echo "${FILE_PATH} is broken, Redownloading ..."
-            rm "${FILE_PATH}"
-            wget "${DOWNLOAD_URL}"/"${FILE_PATH}"
-        fi
-    else
-        echo "Downloading ${FILE_PATH} ..."
-        wget "${DOWNLOAD_URL}"/"${FILE_PATH}"
-    fi
-}
 
 if [[ "${RUN_HIVE3}" -eq 1 ]]; then
     # hive3
@@ -403,30 +427,6 @@ if [[ "${RUN_HIVE3}" -eq 1 ]]; then
     . "${ROOT}"/docker-compose/hive/hive-3x_settings.env
     envsubst <"${ROOT}"/docker-compose/hive/hive-3x.yaml.tpl >"${ROOT}"/docker-compose/hive/hive-3x.yaml
     envsubst <"${ROOT}"/docker-compose/hive/hadoop-hive.env.tpl >"${ROOT}"/docker-compose/hive/hadoop-hive.env
-
-    # hudi depends on hive3
-    if [[ "${RUN_HUDI}" -eq 1 ]]; then
-        mkdir -p "${ROOT}"/docker-compose/hudi/scripts/packages
-        cd "${ROOT}"/docker-compose/hudi/scripts/packages
-
-        download_source_file "hudi-spark3.4-bundle_2.12-0.14.1.jar" "a9cb8c752d1d7132ef3cfe3ead78a30d" "https://repo1.maven.org/maven2/org/apache/hudi/hudi-spark3.4-bundle_2.12/0.14.1"
-        download_source_file "spark-3.4.2-bin-hadoop3.tgz" "b393d314ffbc03facdc85575197c5db9" "https://archive.apache.org/dist/spark/spark-3.4.2"
-
-        if [[ ! -f "spark-3.4.2-bin-hadoop3/SUCCESS" ]]; then
-            echo "Prepare spark3.4 environment"
-            if [[ -d "spark-3.4.2-bin-hadoop3" ]]; then
-                echo "Remove broken spark-3.4.2-bin-hadoop3"
-                rm -rf spark-3.4.2-bin-hadoop3
-            fi
-            echo "Unpackage spark-3.4.2-bin-hadoop3"
-            tar -xf spark-3.4.2-bin-hadoop3.tgz
-            cp hudi-spark3.4-bundle_2.12-0.14.1.jar spark-3.4.2-bin-hadoop3/jars/
-            touch spark-3.4.2-bin-hadoop3/SUCCESS
-        fi
-
-        cd -
-    fi
-
     sudo docker compose -p ${CONTAINER_UID}hive3 -f "${ROOT}"/docker-compose/hive/hive-3x.yaml --env-file "${ROOT}"/docker-compose/hive/hadoop-hive.env down
     if [[ "${STOP}" -ne 1 ]]; then
         sudo docker compose -p ${CONTAINER_UID}hive3 -f "${ROOT}"/docker-compose/hive/hive-3x.yaml --env-file "${ROOT}"/docker-compose/hive/hadoop-hive.env up --build --remove-orphans -d

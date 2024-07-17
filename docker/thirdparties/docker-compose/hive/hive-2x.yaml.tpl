@@ -85,6 +85,7 @@ services:
       - "${HMS_PORT}"
     volumes:
       - ./scripts:/mnt/scripts
+      - ../hudi/scripts:/mnt/hudi
     depends_on:
       - hive-metastore-postgresql
     healthcheck:
