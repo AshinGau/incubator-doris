@@ -406,8 +406,8 @@ if [[ "${RUN_HIVE3}" -eq 1 ]]; then
 
     # hudi depends on hive3
     if [[ "${RUN_HUDI}" -eq 1 ]]; then
-        mkdir "${ROOT}"/docker-compose/hive/scripts/packages
-        cd "${ROOT}"/docker-compose/hive/scripts/packages
+        mkdir -p "${ROOT}"/docker-compose/hudi/scripts/packages
+        cd "${ROOT}"/docker-compose/hudi/scripts/packages
 
         download_source_file "hudi-spark3.4-bundle_2.12-0.14.1.jar" "a9cb8c752d1d7132ef3cfe3ead78a30d" "https://repo1.maven.org/maven2/org/apache/hudi/hudi-spark3.4-bundle_2.12/0.14.1"
         download_source_file "spark-3.4.2-bin-hadoop3.tgz" "b393d314ffbc03facdc85575197c5db9" "https://archive.apache.org/dist/spark/spark-3.4.2"
@@ -420,8 +420,6 @@ if [[ "${RUN_HIVE3}" -eq 1 ]]; then
             fi
             echo "Unpackage spark-3.4.2-bin-hadoop3"
             tar -xf spark-3.4.2-bin-hadoop3.tgz
-            cp aws-java-sdk-bundle-1.12.48.jar spark-3.4.2-bin-hadoop3/jars/
-            cp hadoop-aws-3.3.1.jar spark-3.4.2-bin-hadoop3/jars/
             cp hudi-spark3.4-bundle_2.12-0.14.1.jar spark-3.4.2-bin-hadoop3/jars/
             touch spark-3.4.2-bin-hadoop3/SUCCESS
         fi
